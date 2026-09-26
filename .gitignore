@@ -77,9 +77,14 @@ Desktop.ini
 *.suo       # Visual Studio Solution User Options
 *.sln.docstates # Visual Studio
 
+# emm
 .vscode/
-.devcontainer
+.devcontainer/
+.temp/
+
 .clangd
+
 idf_env.ps1
 idf_env.sh
+
 **/*/secrets.h

@@ -1,3 +1,2 @@
 idf_component_register(SRCS "main.c"
-                    INCLUDE_DIRS "."
-                    REQUIRES esp_wifi nvs_flash esp_driver_gpio esp_driver_ledc)
+                    PRIV_REQUIRES nvs_flash wifi_mgr mqtt_mgr servo)

@@ -1,7 +1,9 @@
 #include "esp_wifi.h"
 #include "esp_log.h"
+#include "nvs_flash.h"
+#include <string.h>
+
 #include "wifi_mgr.h"
-#include "secrets.h"
 
 static void wifi_handler(void* event_handler_arg, esp_event_base_t event_base, int32_t event_id, void* event_data) {
     
@@ -44,13 +46,36 @@ void wifi_start() {
     ESP_ERROR_CHECK(esp_wifi_init(&wifi_config));
 
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
-    wifi_config_t sta_config = {
-		.sta = {
-			.ssid = ESP_WIFI_STA_SSID,
-			.password = ESP_WIFI_STA_PASSWD,
-			.bssid_set = false,
-		},
-	};
+
+    nvs_handle_t nvs_handle;
+    esp_err_t err;
+    err = nvs_open("wifi", NVS_READONLY, &nvs_handle);
+    if (err != ESP_OK) {
+        ESP_LOGW("WIFI", "Failed to open nvs: %s", err);
+        ESP_ERROR_CHECK(err);
+    }
+
+    char wifi_ssid[33] = {0};
+    char wifi_passwd[65] = {0};
+    size_t ssid_length = sizeof(wifi_ssid);
+    size_t password_length = sizeof(wifi_passwd);
+
+    err = nvs_get_str(nvs_handle, "ssid", wifi_ssid, &ssid_length);
+    if (err != ESP_OK) {
+        ESP_LOGW("WIFI", "Failed to get wifi SSID: %s", err);
+    }
+    err = nvs_get_str(nvs_handle, "password", wifi_passwd, &password_length);
+    if (err != ESP_OK) {
+        ESP_LOGW("WIFI", "Failed to get wifi password: %s", err);
+    }
+
+    nvs_close(nvs_handle);
+        wifi_config_t sta_config = {0};
+        memcpy(sta_config.sta.ssid, wifi_ssid,
+            strnlen(wifi_ssid, sizeof(sta_config.sta.ssid)));
+        memcpy(sta_config.sta.password, wifi_passwd,
+            strnlen(wifi_passwd, sizeof(sta_config.sta.password)));
+        sta_config.sta.bssid_set = false;
 
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &sta_config));
 

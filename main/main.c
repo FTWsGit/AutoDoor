@@ -16,11 +16,12 @@ void app_main() {
 
     ESP_ERROR_CHECK(esp_event_loop_create_default());
 
-    servo_init();
+    TaskHandle_t xServoHandle = NULL;
+    servo_init(&xServoHandle);
 
     wifi_start();
 
     vTaskDelay(5000 / portTICK_PERIOD_MS);
 
-    mqtt_start();
+    mqtt_start(xServoHandle);
 }

@@ -3,7 +3,6 @@
 #include "string.h"
 
 #include "mqtt_mgr.h"
-#include "servo.h"
 #include "secrets.h"
 
 
@@ -18,14 +17,15 @@ static void mqtt_handler(void* event_handler_arg, esp_event_base_t base, int32_t
     ESP_LOGD(TAG, "Event dispatched from event loop base=%s, event_id=%" PRIi32 "", base, event_id);
 	esp_mqtt_event_handle_t event = event_data;
 	esp_mqtt_client_handle_t client = event->client;
-	int msg_id;
+	TaskHandle_t servo_handle = (TaskHandle_t)event_handler_arg;
+
 	switch ((esp_mqtt_event_id_t)event_id)
 	{
 	// MQTT连接成功
 	case MQTT_EVENT_CONNECTED:
 		ESP_LOGI(TAG, "MQTT_EVENT_CONNECTED");
 		// 订阅消息
-		msg_id = esp_mqtt_client_subscribe(client, "dormdoor006", 0);
+		esp_mqtt_client_subscribe(client, "dormdoor006", 0);
 		break;
 	// MQTT连接断开
 	case MQTT_EVENT_DISCONNECTED:
@@ -49,21 +49,12 @@ static void mqtt_handler(void* event_handler_arg, esp_event_base_t base, int32_t
 		printf("TOPIC=%.*s\r\n", event->topic_len, event->topic);
 		printf("DATA=%.*s\r\n", event->data_len, event->data);
         if (event->data_len == 6 && strncmp(event->data, "openup", 6) == 0) {
-            printf("Start opening\r\n");
-
-			servo_switch(SERVO_RIGHT, 250);
-            vTaskDelay(1000 / portTICK_PERIOD_MS);
-			
-			servo_switch(SERVO_STOP, 0);
-            vTaskDelay(2000 / portTICK_PERIOD_MS);
-
-			servo_switch(SERVO_LEFT, 300);
-            vTaskDelay(1000 / portTICK_PERIOD_MS);
-			
-			servo_switch(SERVO_STOP, 0);
-
-            printf("Stop opening\r\n");
-        }
+			if (servo_handle != NULL) {
+			xTaskNotifyGive(servo_handle);
+			} else {
+			ESP_LOGE(TAG, "servo task not ready");
+			}
+       }
 		break;
 	// MQTT错误
 	case MQTT_EVENT_ERROR:
@@ -82,7 +73,7 @@ static void mqtt_handler(void* event_handler_arg, esp_event_base_t base, int32_t
 	}
 }
 
-void mqtt_start() {
+void mqtt_start(TaskHandle_t servo_handle) {
     esp_mqtt_client_config_t mqtt_config = {
         .broker.address.uri = ESP_MQTT_BROKER,
         .credentials.client_id = ESP_MQTT_CLIENT_ID
@@ -90,8 +81,7 @@ void mqtt_start() {
 
     esp_mqtt_client_handle_t client = esp_mqtt_client_init(&mqtt_config);
 
-    esp_mqtt_client_register_event(client, ESP_EVENT_ANY_ID, mqtt_handler, NULL);
+    esp_mqtt_client_register_event(client, ESP_EVENT_ANY_ID, mqtt_handler, (void*)servo_handle);
 
     esp_mqtt_client_start(client);
 }
-

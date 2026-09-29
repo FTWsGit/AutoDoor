@@ -1,6 +1,8 @@
 #pragma once
 
 #include "driver/gpio.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
 #define SERVO_STOP_US 1500
 #define SERVO_ALL_US  20000
@@ -13,5 +15,4 @@ typedef enum {
     SERVO_RIGHT
 } servo_direction_t;
 
-void servo_init(void);
-void servo_switch(servo_direction_t direct, int speed);
+void servo_init(TaskHandle_t* pxServoHandle);

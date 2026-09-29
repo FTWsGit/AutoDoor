@@ -1,3 +1,3 @@
 #pragma once
 
-void mqtt_start(void);
+void mqtt_start(TaskHandle_t servo_handle);

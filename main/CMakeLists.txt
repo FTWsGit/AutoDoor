@@ -1,2 +1,2 @@
 idf_component_register(SRCS "main.c"
-                    PRIV_REQUIRES nvs_flash wifi_mgr mqtt_mgr servo)
+                    PRIV_REQUIRES nvs_flash wifi_mgr mqtt_mgr servo http_server)

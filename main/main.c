@@ -5,7 +5,7 @@
 #include "wifi_mgr.h"
 #include "mqtt_mgr.h"
 #include "servo.h"
-
+#include "http_server.h"
 
 void app_main() {
     esp_err_t ret = nvs_flash_init();
@@ -24,4 +24,5 @@ void app_main() {
     vTaskDelay(5000 / portTICK_PERIOD_MS);
 
     mqtt_start(xServoHandle);
+    http_server_start();
 }

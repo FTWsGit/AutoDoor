@@ -5,8 +5,8 @@
 #include "mqtt_mgr.h"
 #include "secrets.h"
 
+const char *TAG = "MQTT";
 
-const char* TAG = "MQTT";
 static void log_error_if_nonzero(const char *message, int error_code)
 {
 	if (error_code != 0) ESP_LOGE(TAG, "Last error %s: 0x%x", message, error_code);
@@ -14,7 +14,7 @@ static void log_error_if_nonzero(const char *message, int error_code)
 
 static void mqtt_handler(void* event_handler_arg, esp_event_base_t base, int32_t event_id, void* event_data) {
 
-    ESP_LOGD(TAG, "Event dispatched from event loop base=%s, event_id=%" PRIi32 "", base, event_id);
+    ESP_LOGD(TAG, "event dispatched from event loop base=%s, event_id=%" PRIi32 "", base, event_id);
 	esp_mqtt_event_handle_t event = event_data;
 	esp_mqtt_client_handle_t client = event->client;
 	TaskHandle_t servo_handle = (TaskHandle_t)event_handler_arg;
@@ -64,11 +64,11 @@ static void mqtt_handler(void* event_handler_arg, esp_event_base_t base, int32_t
 			log_error_if_nonzero("reported from esp-tls", event->error_handle->esp_tls_last_esp_err);
 			log_error_if_nonzero("reported from tls stack", event->error_handle->esp_tls_stack_err);
 			log_error_if_nonzero("captured as transport's socket errno", event->error_handle->esp_transport_sock_errno);
-			ESP_LOGI(TAG, "Last errno string (%s)", strerror(event->error_handle->esp_transport_sock_errno));
+			ESP_LOGI(TAG, "last errno string (%s)", strerror(event->error_handle->esp_transport_sock_errno));
 		}
 		break;
 	default:
-		ESP_LOGI(TAG, "Other event id:%d", event->event_id);
+		ESP_LOGI(TAG, "other event id:%d", event->event_id);
 		break;
 	}
 }

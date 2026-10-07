@@ -90,3 +90,5 @@ idf_env.sh
 **/*/secrets.h
 
 dependencies.lock
+
+certs/

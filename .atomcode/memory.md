@@ -1,0 +1,1 @@
+- AutoDoor: http_server_start()/任何 socket 操作必须在 wifi_start() 之后调用，esp_netif_init() 在 wifi_start() 内部，提前会导致 lwIP "Invalid mbox" panic 循环重启（C3 USB 串口会因此消失）

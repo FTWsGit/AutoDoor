@@ -3,12 +3,14 @@
 #include "esp_log.h"
 #include "nvs_flash.h"
 #include "esp_http_server.h"
+#include "esp_https_ota.h"
 #include "string.h"
 
 #include "http_server.h"
 #include "index_html.h"
 
 const char *HTTP_TAG = "HTTP_SERVER";
+extern const uint8_t ca_crt_start[] asm("_binary_ca_crt_start");
 
 static void url_decode(char *dst, const char *src, size_t max)
 {
@@ -26,6 +28,17 @@ static void url_decode(char *dst, const char *src, size_t max)
         }
     }
     dst[i] = '\0';
+}
+
+static esp_err_t run_ota(const char *ota_uri) {
+    esp_https_ota_config_t ota_config = {
+        .http_config = &(esp_http_client_config_t){
+            .url = ota_uri,
+            .cert_pem = (char *)ca_crt_start,
+        },
+    };
+
+    return esp_https_ota(&ota_config);
 }
 
 // GET /
@@ -137,6 +150,75 @@ static esp_err_t wifi_sta_post_handler(httpd_req_t *req)
     return ESP_OK;
 }
 
+// POST /ota
+static esp_err_t ota_post_handler(httpd_req_t *req)
+{
+    int total_len = req->content_len;
+    if (total_len <= 0 || total_len > 512) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "长度非法");
+        return ESP_FAIL;
+    }
+
+    char *buf = (char*)malloc(total_len + 1);
+    if (!buf) {
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "内存不足");
+        return ESP_FAIL;
+    }
+
+    int received = 0;
+    while (received < total_len) {
+        int ret = httpd_req_recv(req, buf + received, total_len - received);
+        if (ret <= 0) {
+            if (ret == HTTPD_SOCK_ERR_TIMEOUT) continue;
+            free(buf);
+            httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "接收失败");
+            return ESP_FAIL;
+        }
+        received += ret;
+    }
+    buf[total_len] = '\0';
+    ESP_LOGI(HTTP_TAG, "Got raw body: %s", buf);
+
+    char uri_raw[128] = {0};
+    char uri[128] = {0};
+
+    char *p = strstr(buf, "ota_uri=");
+    if (!p) {
+        free(buf);
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "缺少 ota_uri");
+        return ESP_FAIL;
+    }
+    p += 8;
+    char *end = strchr(p, '&');
+    int len = end ? (end - p) : (int) strlen(p);
+    if (len > (int) sizeof(uri_raw) - 1) len = sizeof(uri_raw) - 1;
+    strncpy(uri_raw, p, len);
+
+    url_decode(uri, uri_raw, sizeof(uri));
+
+    ESP_LOGI(HTTP_TAG, "received OTA URI=%s", uri);
+
+    free(buf);
+
+    esp_err_t ret = run_ota(uri);
+    if (ret != ESP_OK) {
+        char msg[64];
+        snprintf(msg, sizeof(msg), "OTA failed: %s", esp_err_to_name(ret));
+        ESP_LOGE(HTTP_TAG, "%s", msg);
+        httpd_resp_set_type(req, "text/plain; charset=utf-8");
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, msg);
+        return ESP_FAIL;
+    }
+
+    ESP_LOGI(HTTP_TAG, "OTA success, restarting...");
+    httpd_resp_set_type(req, "text/plain; charset=utf-8");
+    httpd_resp_sendstr(req, "OTA success, restarting...");
+    vTaskDelay(pdMS_TO_TICKS(1000));
+    esp_restart();
+
+    return ESP_OK;
+}
+
 
 void http_server_start() {
     httpd_config_t config = HTTPD_DEFAULT_CONFIG(); // Default 80 port
@@ -158,6 +240,14 @@ void http_server_start() {
             .user_ctx = NULL
         };
         httpd_register_uri_handler(server, &wifi_sta_uri);
+
+        httpd_uri_t ota_uri = {
+            .method = HTTP_POST,
+            .uri = "/ota", 
+            .handler = ota_post_handler,
+            .user_ctx = NULL
+        };
+        httpd_register_uri_handler(server, &ota_uri);
 
         ESP_LOGI(HTTP_TAG, "HTTP server started on port 80");
     }

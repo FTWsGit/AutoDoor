@@ -23,7 +23,7 @@ static void wifi_handler(void* event_handler_arg, esp_event_base_t event_base, i
 		{
             esp_err_t err = esp_wifi_connect();
 			if (err != ESP_OK) {
-                ESP_LOGW("WIFI_EVENT", "WIFI connect failed: %s", err);
+                ESP_LOGW("WIFI_EVENT", "WIFI connect failed: %s", esp_err_to_name(err));
             }
 		}
 		else{
@@ -66,9 +66,14 @@ void wifi_start() {
 
     nvs_handle_t nvs_handle;
     esp_err_t err;
+    bool enable_sta = true;
     err = nvs_open("wifi", NVS_READONLY, &nvs_handle);
-    if (err != ESP_OK) {
-        ESP_LOGW("WIFI", "Failed to open nvs: %s", err);
+    if (err == ESP_ERR_NVS_NOT_FOUND) {
+        // 命名空间不存在 = 首次启动，还没有保存的 WiFi 配置，走 AP 配网流程
+        ESP_LOGW("WIFI", "No saved wifi config in nvs, AP mode only");
+        enable_sta = false;
+    } else if (err != ESP_OK) {
+        ESP_LOGW("WIFI", "Failed to open nvs: %s", esp_err_to_name(err));
         ESP_ERROR_CHECK(err);
     }
 
@@ -76,29 +81,19 @@ void wifi_start() {
     char wifi_passwd[65] = {0};
     size_t ssid_length = sizeof(wifi_ssid);
     size_t password_length = sizeof(wifi_passwd);
-    bool enable_sta = true;
 
     err = nvs_get_str(nvs_handle, "ssid", wifi_ssid, &ssid_length);
     if (err != ESP_OK) {
-        ESP_LOGW("WIFI", "Failed to get wifi SSID: %s", err);
+        ESP_LOGW("WIFI", "Failed to get wifi SSID: %s", esp_err_to_name(err));
         enable_sta = false;
     }
     err = nvs_get_str(nvs_handle, "password", wifi_passwd, &password_length);
     if (err != ESP_OK) {
-        ESP_LOGW("WIFI", "Failed to get wifi password: %s", err);
+        ESP_LOGW("WIFI", "Failed to get wifi password: %s", esp_err_to_name(err));
         enable_sta = false;
     }
     nvs_close(nvs_handle);
-    
-    wifi_config_t sta_config = {0};
-    memcpy(sta_config.sta.ssid, wifi_ssid,
-        strnlen(wifi_ssid, sizeof(sta_config.sta.ssid)));
-    memcpy(sta_config.sta.password, wifi_passwd,
-        strnlen(wifi_passwd, sizeof(sta_config.sta.password)));
-    sta_config.sta.bssid_set = false;
 
-    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &sta_config));
-    
     wifi_config_t ap_config = {
         .ap = {
             .ssid = WIFI_AP_DEFAULT_SSID,
@@ -107,7 +102,6 @@ void wifi_start() {
             .authmode = WIFI_AUTH_WPA2_PSK
         }
     };
-
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &ap_config));
 
     if (enable_sta) {
@@ -117,6 +111,16 @@ void wifi_start() {
     else {
         ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_AP));
         ESP_LOGI("WIFI", "Set WIFI to AP-Only Mode");
+    }
+
+    if (enable_sta) {
+        wifi_config_t sta_config = {0};
+        memcpy(sta_config.sta.ssid, wifi_ssid,
+            strnlen(wifi_ssid, sizeof(sta_config.sta.ssid)));
+        memcpy(sta_config.sta.password, wifi_passwd,
+            strnlen(wifi_passwd, sizeof(sta_config.sta.password)));
+        sta_config.sta.bssid_set = false;
+        ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &sta_config));
     }
 
 	ESP_ERROR_CHECK(esp_wifi_start());

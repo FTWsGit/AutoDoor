@@ -4,13 +4,15 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
-#define SERVO_STOP_US 1500
+#define SERVO_MIDDLE_US 1500
+#define SERVO_LEFT_US 2500
+#define SERVO_RIGHT_US 800
 #define SERVO_ALL_US  20000
 
 #define SERVO_GPIO_NUM GPIO_NUM_1
 
 typedef enum {
-    SERVO_STOP = 0,
+    SERVO_MIDDLE = 0,
     SERVO_LEFT,
     SERVO_RIGHT
 } servo_direction_t;

@@ -6,19 +6,19 @@
 #include "esp_log.h"
 #include "servo.h"
 
-static void servo_switch(servo_direction_t direct, int speed) {
+static void servo_set(servo_direction_t direct) {
     switch (direct) 
     {
-    case SERVO_STOP:
-        ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, (SERVO_STOP_US * 8192) / SERVO_ALL_US);
+    case SERVO_MIDDLE:
+        ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, (SERVO_MIDDLE_US * 8192) / SERVO_ALL_US);
         ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0);
         break;
     case SERVO_LEFT:
-        ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, ((SERVO_STOP_US - speed) * 8192) / SERVO_ALL_US);
+        ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, ((SERVO_LEFT_US) * 8192) / SERVO_ALL_US);
         ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0);
         break;
     case SERVO_RIGHT:
-        ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, ((SERVO_STOP_US + speed) * 8192) / SERVO_ALL_US);
+        ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, ((SERVO_RIGHT_US) * 8192) / SERVO_ALL_US);
         ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0);
         break;
     }
@@ -29,16 +29,11 @@ static void servoTask(void *pvParameters) {
         ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
         ESP_LOGI("SERVO", "Start opening\r\n");
 
-		servo_switch(SERVO_RIGHT, 100);
-        vTaskDelay(1000 / portTICK_PERIOD_MS);
-			
-		servo_switch(SERVO_STOP, 0);
+		servo_set(SERVO_RIGHT);
+
         vTaskDelay(2000 / portTICK_PERIOD_MS);
 
-		servo_switch(SERVO_LEFT, 100);
-        vTaskDelay(1000 / portTICK_PERIOD_MS);
-			
-		servo_switch(SERVO_STOP, 0);
+		servo_set(SERVO_LEFT);
 
         ESP_LOGI("SERVO", "Closed\r\n");
     }
@@ -58,7 +53,7 @@ void servo_init(TaskHandle_t* pxServoHandle) {
 
     ledc_channel_config_t ledc_channel = {
         .channel = LEDC_CHANNEL_0,
-        .duty = (SERVO_STOP_US * 8192) / SERVO_ALL_US,
+        .duty = (SERVO_LEFT_US * 8192) / SERVO_ALL_US,
         .speed_mode = LEDC_LOW_SPEED_MODE,
         .gpio_num = SERVO_GPIO_NUM, 
         .timer_sel = LEDC_TIMER_0

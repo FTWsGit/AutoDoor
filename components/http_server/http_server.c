@@ -8,7 +8,7 @@
 #include "http_server.h"
 #include "index_html.h"
 
-const char *TAG = "HTTP_SERVER";
+const char *HTTP_TAG = "HTTP_SERVER";
 
 static void url_decode(char *dst, const char *src, size_t max)
 {
@@ -63,7 +63,7 @@ static esp_err_t wifi_sta_post_handler(httpd_req_t *req)
         received += ret;
     }
     buf[total_len] = '\0';
-    ESP_LOGI(TAG, "Got raw body: %s", buf);
+    ESP_LOGI(HTTP_TAG, "Got raw body: %s", buf);
 
     char ssid_raw[33] = {0}, passwd_raw[65] = {0};
     char ssid[33] = {0}, passwd[65] = {0};
@@ -88,13 +88,13 @@ static esp_err_t wifi_sta_post_handler(httpd_req_t *req)
     url_decode(ssid,   ssid_raw,   sizeof(ssid));
     url_decode(passwd, passwd_raw, sizeof(passwd));
 
-    ESP_LOGI(TAG, "received SSID=%s  PASSWD=%s", ssid, passwd);
+    ESP_LOGI(HTTP_TAG, "received SSID=%s  PASSWD=%s", ssid, passwd);
 
     nvs_handle_t nvs_handle;
     esp_err_t err;
     err = nvs_open("wifi", NVS_READWRITE, &nvs_handle);
     if (err != ESP_OK) {
-        ESP_LOGW(TAG, "failed to open nvs: %s", err);
+        ESP_LOGW(HTTP_TAG, "failed to open nvs: %s", esp_err_to_name(err));
         ESP_ERROR_CHECK(err);
     }
 
@@ -102,18 +102,18 @@ static esp_err_t wifi_sta_post_handler(httpd_req_t *req)
 
     err = nvs_set_str(nvs_handle, "ssid", ssid);
     if (err != ESP_OK) {
-        ESP_LOGW(TAG, "failed to set wifi SSID: %s", err);
+        ESP_LOGW(HTTP_TAG, "failed to set wifi SSID: %s", esp_err_to_name(err));
         isSuccess = false;
     } else {
-        ESP_LOGI(TAG, "set wifi SSID: %s", ssid);
+        ESP_LOGI(HTTP_TAG, "set wifi SSID: %s", ssid);
     }
 
     err = nvs_set_str(nvs_handle, "password", passwd);
     if (err != ESP_OK) {
-        ESP_LOGW(TAG, "failed to set wifi password: %s", err);
+        ESP_LOGW(HTTP_TAG, "failed to set wifi password: %s", esp_err_to_name(err));
         isSuccess = false;
     } else {
-        ESP_LOGI(TAG, "set wifi password: %s", passwd);
+        ESP_LOGI(HTTP_TAG, "set wifi password: %s", passwd);
     }
 
     nvs_close(nvs_handle);
@@ -131,7 +131,7 @@ static esp_err_t wifi_sta_post_handler(httpd_req_t *req)
 
     free(buf);
 
-    ESP_LOGI(TAG, "restart the device now...");
+    ESP_LOGI(HTTP_TAG, "restart the device now...");
     esp_restart();
 
     return ESP_OK;
@@ -159,9 +159,9 @@ void http_server_start() {
         };
         httpd_register_uri_handler(server, &wifi_sta_uri);
 
-        ESP_LOGI(TAG, "HTTP server started on port 80");
+        ESP_LOGI(HTTP_TAG, "HTTP server started on port 80");
     }
     else {
-        ESP_LOGW(TAG, "failed to start HTTP server");
+        ESP_LOGW(HTTP_TAG, "failed to start HTTP server");
     }
 }

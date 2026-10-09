@@ -1,0 +1,8 @@
+menu "AutoDoor: OTA"
+
+    config AUTODOOR_OTA_TIMEOUT_MS
+        int "Network timeout while downloading firmware (ms)"
+        range 1000 120000
+        default 10000
+
+endmenu

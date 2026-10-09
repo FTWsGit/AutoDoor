@@ -1,0 +1,7 @@
+menu "AutoDoor: MQTT"
+
+    config AUTODOOR_MQTT_TOPIC
+        string "Topic that carries door commands"
+        default "dormdoor006"
+
+endmenu

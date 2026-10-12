@@ -1,0 +1,8 @@
+menu "AutoDoor: Health check"
+
+    config AUTODOOR_HEALTH_TIMEOUT_S
+        int "Seconds a freshly updated firmware has to prove it is healthy"
+        range 10 600
+        default 60
+
+endmenu

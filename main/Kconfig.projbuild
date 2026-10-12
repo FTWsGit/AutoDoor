@@ -1,0 +1,7 @@
+menu "AutoDoor: Commands"
+
+    config AUTODOOR_CMD_OPEN
+        string "MQTT payload that opens the door"
+        default "openup"
+
+endmenu

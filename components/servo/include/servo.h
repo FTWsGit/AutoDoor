@@ -1,20 +1,32 @@
 #pragma once
 
+#include <stdint.h>
+
 #include "driver/gpio.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
+#include "esp_err.h"
 
-#define SERVO_MIDDLE_US 1500
-#define SERVO_LEFT_US 2500
-#define SERVO_RIGHT_US 800
-#define SERVO_ALL_US  20000
+/* Pulse widths outside this range are rejected to protect the servo mechanics. */
+#define SERVO_MIN_PULSE_US 500
+#define SERVO_MAX_PULSE_US 2500
 
-#define SERVO_GPIO_NUM GPIO_NUM_1
+typedef struct {
+    gpio_num_t gpio;           /* PWM output pin */
+    uint32_t initial_pulse_us; /* pulse emitted as soon as the output is enabled */
+} servo_config_t;
 
-typedef enum {
-    SERVO_MIDDLE = 0,
-    SERVO_LEFT,
-    SERVO_RIGHT
-} servo_direction_t;
+/**
+ * @brief Configure LEDC (50 Hz PWM) for a single hobby servo.
+ *
+ * This is a plain hardware driver: it knows nothing about doors or directions.
+ *
+ * @return ESP_OK, ESP_ERR_INVALID_ARG (bad config) or ESP_ERR_INVALID_STATE (already initialised),
+ *         otherwise the error reported by the LEDC driver.
+ */
+esp_err_t servo_init(const servo_config_t *config);
 
-void servo_init(TaskHandle_t* pxServoHandle);
+/**
+ * @brief Move the servo by setting the PWM pulse width.
+ *
+ * @return ESP_OK, ESP_ERR_INVALID_STATE (not initialised) or ESP_ERR_INVALID_ARG (out of range).
+ */
+esp_err_t servo_set_pulse_us(uint32_t pulse_us);

@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ESP32 配置</title>
+<style>
+  body { font-family: sans-serif; margin: 20px; }
+  .tab-buttons button { padding: 8px 16px; margin-right: 4px; border: 1px solid #ccc;
+    background: #f0f0f0; cursor: pointer; border-radius: 4px; }
+  .tab-buttons button.active { background: #007bff; color: #fff; }
+  .tab-content { display: none; margin-top: 16px; }
+  .tab-content.active { display: block; }
+  input { padding: 8px; margin: 4px 0; width: 220px; box-sizing: border-box; }
+  input.wide { width: 320px; max-width: 100%; }
+  button.save { padding: 8px 20px; background: #28a745; color: #fff; border: none;
+    border-radius: 4px; cursor: pointer; }
+  button.save:disabled { background: #999; cursor: not-allowed; }
+  .status { margin-top: 12px; font-weight: bold; }
+  .ok { color: green; }
+  .err { color: red; }
+</style>
+</head>
+<body>
+<h1>ESP32 配置页面</h1>
+
+<div class="tab-buttons">
+  <button class="active" onclick="showTab('tab-wifi', this)">Wi-Fi 设置</button>
+  <button onclick="showTab('tab-ota', this)">OTA 升级</button>
+  <button onclick="showTab('tab-info', this); loadInfo()">设备信息</button>
+</div>
+
+<div id="tab-wifi" class="tab-content active">
+  <h2>修改 Wi-Fi</h2>
+  <div><label>SSID</label><br>
+    <input type="text" id="ssid" placeholder="输入 Wi-Fi 名称"></div>
+  <div><label>密码</label><br>
+    <input type="text" id="passwd" placeholder="输入 Wi-Fi 密码"></div>
+  <button class="save" id="saveBtn" onclick="saveWifi()">保存</button>
+  <div id="status" class="status"></div>
+</div>
+
+<div id="tab-ota" class="tab-content">
+  <h2>OTA 升级</h2>
+  <div><label>固件地址</label><br>
+    <input type="text" id="ota_uri" class="wide" placeholder="https://example.com/firmware.bin"></div>
+  <button class="save" id="otaBtn" onclick="startOta()">升级</button>
+  <div id="otaStatus" class="status"></div>
+</div>
+
+<div id="tab-info" class="tab-content">
+  <h2>设备信息</h2>
+  <p>芯片： <span id="info-chip">-</span></p>
+  <p>固件版本： <span id="info-version">-</span></p>
+  <p>运行分区： <span id="info-partition">-</span></p>
+  <p>ESP-IDF： <span id="info-idf">-</span></p>
+</div>
+
+<script>
+function $(id) { return document.getElementById(id); }
+
+function show(el, ok, text) {
+  el.className = 'status ' + (ok ? 'ok' : 'err');
+  el.textContent = (ok ? '\u2705 ' : '\u274C ') + text;
+}
+
+function showTab(id, btn) {
+  document.querySelectorAll('.tab-content').forEach(function (e) { e.classList.remove('active'); });
+  document.querySelectorAll('.tab-buttons button').forEach(function (e) { e.classList.remove('active'); });
+  $(id).classList.add('active');
+  btn.classList.add('active');
+}
+
+function postForm(url, fields) {
+  return fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams(fields).toString()
+  });
+}
+
+function saveWifi() {
+  var ssid = $('ssid').value.trim();
+  var passwd = $('passwd').value.trim();
+  var status = $('status'), btn = $('saveBtn');
+  if (!ssid || !passwd) { show(status, false, '请填写 SSID 和密码'); return; }
+
+  btn.disabled = true; btn.textContent = '保存中...';
+  status.textContent = '';
+  postForm('/wifi_sta', { ssid: ssid, passwd: passwd })
+    .then(function (r) { return r.text().then(function (t) { return { ok: r.ok, text: t }; }); })
+    .then(function (res) { show(status, res.ok, res.text); })
+    .catch(function (e) { show(status, false, e.message); })
+    .finally(function () { btn.disabled = false; btn.textContent = '保存'; });
+}
+
+function startOta() {
+  var uri = $('ota_uri').value.trim();
+  var status = $('otaStatus'), btn = $('otaBtn');
+  if (!uri) { show(status, false, '请输入固件地址'); return; }
+
+  btn.disabled = true; btn.textContent = '升级中，请勿断电...';
+  status.textContent = '';
+  postForm('/ota', { ota_uri: uri })
+    .then(function (r) {
+      return r.text().then(function (t) {
+        if (r.status !== 202) { throw new Error(t); }
+        pollOta();
+      });
+    })
+    .catch(function (e) {
+      show(status, false, e.message);
+      btn.disabled = false; btn.textContent = '升级';
+    });
+}
+
+function pollOta() {
+  var status = $('otaStatus'), btn = $('otaBtn');
+  fetch('/ota/status')
+    .then(function (r) { return r.json(); })
+    .then(function (s) {
+      if (s.state === 'running') {
+        status.className = 'status';
+        status.textContent = '下载中 ' + s.progress + '%';
+        setTimeout(pollOta, 1500);
+      } else if (s.state === 'success') {
+        show(status, true, '升级成功，设备正在重启...');
+      } else if (s.state === 'failed') {
+        show(status, false, '升级失败: ' + s.error);
+        btn.disabled = false; btn.textContent = '升级';
+      } else {
+        btn.disabled = false; btn.textContent = '升级';
+      }
+    })
+    .catch(function () {
+      // The device dropped the connection: it is most likely rebooting into the new firmware.
+      show(status, true, '设备已断开，可能正在重启，请稍后刷新页面');
+    });
+}
+
+function loadInfo() {
+  fetch('/info')
+    .then(function (r) { return r.json(); })
+    .then(function (i) {
+      $('info-chip').textContent = i.chip;
+      $('info-version').textContent = i.version;
+      $('info-partition').textContent = i.partition;
+      $('info-idf').textContent = i.idf;
+    })
+    .catch(function () {});
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,23 @@
+menu "AutoDoor: Door"
+
+    config AUTODOOR_SERVO_GPIO
+        int "Servo PWM GPIO"
+        range 0 21
+        default 1
+
+    config AUTODOOR_DOOR_CLOSED_US
+        int "Servo pulse width for the closed position (us)"
+        range 500 2500
+        default 2500
+
+    config AUTODOOR_DOOR_OPEN_US
+        int "Servo pulse width for the open position (us)"
+        range 500 2500
+        default 800
+
+    config AUTODOOR_DOOR_OPEN_HOLD_MS
+        int "How long the door stays open (ms)"
+        range 100 60000
+        default 2000
+
+endmenu

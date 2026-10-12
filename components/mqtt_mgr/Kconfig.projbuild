@@ -1,0 +1,15 @@
+menu "AutoDoor: MQTT"
+
+    config AUTODOOR_MQTT_TOPIC
+        string "Topic that carries door commands"
+        default "dormdoor006"
+
+    config AUTODOOR_MQTT_BROKER
+        string "Broker that mqtt subscribed"
+        default "mqtt://bemfa.com:9501"
+
+    config AUTODOOR_MQTT_CLIENT_ID
+        string "Client ID for authorize"
+        default ""
+        
+endmenu

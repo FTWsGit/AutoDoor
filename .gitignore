@@ -87,8 +87,4 @@ temp/
 idf_env.ps1
 idf_env.sh
 
-**/*/secrets.h
-
-dependencies.lock
-
 certs/

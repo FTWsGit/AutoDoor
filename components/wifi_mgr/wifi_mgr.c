@@ -11,6 +11,8 @@
 #include "esp_timer.h"
 #include "esp_wifi.h"
 #include "nvs.h"
+#include "esp_netif_sntp.h"
+#include "esp_sntp.h"
 
 #define NVS_NAMESPACE    "wifi"
 #define NVS_KEY_SSID     "ssid"
@@ -26,6 +28,22 @@ static bool s_started;
 static volatile bool s_has_ip;
 static volatile uint8_t s_retry_count; /* only used for backoff, benign if racy */
 static esp_timer_handle_t s_reconnect_timer;
+
+/* ---- sntp ------------------------------------------------------------------------------- */
+static void start_sntp_once(void)
+{
+    static bool s_sntp_started = false;
+    if (s_sntp_started) return;
+
+    esp_sntp_config_t sntp_config = ESP_NETIF_SNTP_DEFAULT_CONFIG(CONFIG_AUTODOOR_SNTP_URL);
+
+    if (esp_netif_sntp_init(&sntp_config) == ESP_OK) {
+        s_sntp_started = true;
+        ESP_LOGI(TAG, "sntp started");
+    } else {
+        ESP_LOGW(TAG, "esp_netif_sntp_init failed");
+    }
+}
 
 /* ---- credentials ------------------------------------------------------------------------ */
 
@@ -155,6 +173,7 @@ static void ip_event_handler(void *arg, esp_event_base_t base, int32_t id, void 
     if (id == IP_EVENT_STA_GOT_IP) {
         const ip_event_got_ip_t *info = data;
         ESP_LOGI(TAG, "got IP " IPSTR, IP2STR(&info->ip_info.ip));
+        start_sntp_once(); // correct the time for once
         s_retry_count = 0;
         s_has_ip = true;
     } else if (id == IP_EVENT_STA_LOST_IP) {

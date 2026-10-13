@@ -9,3 +9,11 @@ menu "AutoDoor: AP"
         default "password"
 
 endmenu
+
+menu "AutoDoor: SNTP"
+
+    config AUTODOOR_SNTP_URL
+        string "SNTP server URL"
+        default "ntp.aliyun.com"
+        
+endmenu

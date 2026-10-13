@@ -6,7 +6,7 @@ menu "AutoDoor: MQTT"
 
     config AUTODOOR_MQTT_BROKER
         string "Broker that mqtt subscribed"
-        default "mqtt://bemfa.com:9501"
+        default "mqtts://bemfa.com:9503"
 
     config AUTODOOR_MQTT_CLIENT_ID
         string "Client ID for authorize"

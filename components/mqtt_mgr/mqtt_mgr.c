@@ -6,6 +6,7 @@
 #include "esp_netif.h"
 #include "freertos/FreeRTOS.h"
 #include "mqtt_client.h"
+#include "esp_crt_bundle.h"
 
 static const char *TAG = "mqtt_mgr";
 
@@ -124,6 +125,7 @@ esp_err_t mqtt_mgr_start(const mqtt_mgr_config_t *config)
     const esp_mqtt_client_config_t mqtt_config = {
         .broker.address.uri = CONFIG_AUTODOOR_MQTT_BROKER,
         .credentials.client_id = CONFIG_AUTODOOR_MQTT_CLIENT_ID,
+        .broker.verification.crt_bundle_attach = esp_crt_bundle_attach,
     };
     esp_mqtt_client_handle_t client = esp_mqtt_client_init(&mqtt_config);
     ESP_RETURN_ON_FALSE(client != NULL, ESP_FAIL, TAG, "esp_mqtt_client_init failed");

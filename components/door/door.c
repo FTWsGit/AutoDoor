@@ -21,16 +21,26 @@ static void move_to(uint32_t pulse_us, const char *what)
     }
 }
 
+#define OPEN_NOTIFY_BIT 0x01
+
 static void door_task(void *arg)
 {
+    uint32_t bits = 0;
+
     for (;;) {
-        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+        xTaskNotifyWait(0, OPEN_NOTIFY_BIT, &bits, portMAX_DELAY);
 
         ESP_LOGI(TAG, "opening");
         move_to(CONFIG_AUTODOOR_DOOR_OPEN_US, "open");
 
-        // Every open command will restart the holding count down
-        ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(CONFIG_AUTODOOR_DOOR_OPEN_HOLD_MS));
+        // Every open command sets OPEN_NOTIFY_BIT and restarts the holding
+        // count down; only when no new command arrives within the hold window
+        // do we fall through and close the door.
+        while (xTaskNotifyWait(0, OPEN_NOTIFY_BIT, &bits,
+                               pdMS_TO_TICKS(CONFIG_AUTODOOR_DOOR_OPEN_HOLD_MS)) == pdTRUE &&
+               (bits & OPEN_NOTIFY_BIT)) {
+            ESP_LOGI(TAG, "hold restarted by open command");
+        }
 
         move_to(CONFIG_AUTODOOR_DOOR_CLOSED_US, "closed");
         ESP_LOGI(TAG, "closed");
@@ -63,6 +73,6 @@ bool door_is_ready(void)
 esp_err_t door_open(void)
 {
     ESP_RETURN_ON_FALSE(s_task != NULL, ESP_ERR_INVALID_STATE, TAG, "door not initialised");
-    xTaskNotifyGive(s_task);
+    xTaskNotify(s_task, OPEN_NOTIFY_BIT, eSetBits);
     return ESP_OK;
 }

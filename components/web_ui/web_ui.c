@@ -7,7 +7,7 @@
 
 #include "esp_app_desc.h"
 #include "esp_check.h"
-#include "esp_http_server.h"
+#include "esp_https_server.h"
 #include "esp_log.h"
 #include "esp_ota_ops.h"
 #include "esp_system.h"
@@ -23,6 +23,10 @@
 #define RESTART_DELAY_MS   1000
 
 extern const char index_html_start[] asm("_binary_index_html_start");
+extern const uint8_t esp_server_crt_start[] asm("_binary_esp_server_crt_start");
+extern const uint8_t esp_server_key_start[] asm("_binary_esp_server_key_start");
+extern const uint8_t esp_server_crt_end[] asm("_binary_esp_server_crt_end");
+extern const uint8_t esp_server_key_end[] asm("_binary_esp_server_key_end");
 
 static const char *TAG = "web_ui";
 static httpd_handle_t s_server;
@@ -219,6 +223,13 @@ static esp_err_t ota_status_get_handler(httpd_req_t *req)
     return httpd_resp_sendstr(req, json);
 }
 
+static esp_err_t favicon_handler(httpd_req_t *req)
+{
+    httpd_resp_set_status(req, "204 No Content");
+    httpd_resp_send(req, NULL, 0);
+    return ESP_OK;
+}
+
 /* ---- public API ------------------------------------------------------------------------- */
 
 static const httpd_uri_t s_routes[] = {
@@ -227,30 +238,35 @@ static const httpd_uri_t s_routes[] = {
     {.uri = "/wifi_sta", .method = HTTP_POST, .handler = wifi_sta_post_handler},
     {.uri = "/ota", .method = HTTP_POST, .handler = ota_post_handler},
     {.uri = "/ota/status", .method = HTTP_GET, .handler = ota_status_get_handler},
+    {.uri = "/favicon.ico", .method = HTTP_GET, .handler = favicon_handler},
 };
 
 esp_err_t web_ui_start(void)
 {
     ESP_RETURN_ON_FALSE(s_server == NULL, ESP_ERR_INVALID_STATE, TAG, "already running");
 
-    httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.stack_size = HTTPD_STACK_SIZE;
-    config.lru_purge_enable = true;
+    httpd_ssl_config_t config = HTTPD_SSL_CONFIG_DEFAULT();
+    config.httpd.stack_size = HTTPD_STACK_SIZE;
+    config.httpd.lru_purge_enable = true;
+    config.servercert = esp_server_crt_start;
+    config.servercert_len = esp_server_crt_end - esp_server_crt_start;
+    config.prvtkey_pem = esp_server_key_start;
+    config.prvtkey_len = esp_server_key_end - esp_server_key_start;
 
     httpd_handle_t server = NULL;
-    ESP_RETURN_ON_ERROR(httpd_start(&server, &config), TAG, "httpd_start failed");
+    ESP_RETURN_ON_ERROR(httpd_ssl_start(&server, &config), TAG, "httpd_start failed");
 
     for (size_t i = 0; i < sizeof(s_routes) / sizeof(s_routes[0]); i++) {
         esp_err_t err = httpd_register_uri_handler(server, &s_routes[i]);
         if (err != ESP_OK) {
             ESP_LOGE(TAG, "cannot register %s: %s", s_routes[i].uri, esp_err_to_name(err));
-            httpd_stop(server);
+            httpd_ssl_stop(server);
             return err;
         }
     }
 
     s_server = server;
-    ESP_LOGI(TAG, "listening on port %d", config.server_port);
+    ESP_LOGI(TAG, "listening on port %d", config.httpd.ctrl_port);
     return ESP_OK;
 }
 

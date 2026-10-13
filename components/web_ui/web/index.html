@@ -16,6 +16,9 @@
   button.save { padding: 8px 20px; background: #28a745; color: #fff; border: none;
     border-radius: 4px; cursor: pointer; }
   button.save:disabled { background: #999; cursor: not-allowed; }
+  button.danger { padding: 12px 24px; background: #dc3545; color: #fff; border: none;
+    border-radius: 4px; cursor: pointer; font-size: 16px; font-weight: bold; }
+  button.danger:disabled { background: #999; cursor: not-allowed; }
   .status { margin-top: 12px; font-weight: bold; }
   .ok { color: green; }
   .err { color: red; }
@@ -27,6 +30,7 @@
 <div class="tab-buttons">
   <button class="active" onclick="showTab('tab-wifi', this)">Wi-Fi 设置</button>
   <button onclick="showTab('tab-ota', this)">OTA 升级</button>
+  <button onclick="showTab('tab-extra', this)">额外控制</button>
   <button onclick="showTab('tab-info', this); loadInfo()">设备信息</button>
 </div>
 
@@ -46,6 +50,12 @@
     <input type="text" id="ota_uri" class="wide" placeholder="https://example.com/firmware.bin"></div>
   <button class="save" id="otaBtn" onclick="startOta()">升级</button>
   <div id="otaStatus" class="status"></div>
+</div>
+
+<div id="tab-extra" class="tab-content">
+  <h2>额外控制</h2>
+  <button class="danger" id="openBtn" onclick="openDoor()">开门</button>
+  <div id="doorStatus" class="status"></div>
 </div>
 
 <div id="tab-info" class="tab-content">
@@ -136,6 +146,17 @@ function pollOta() {
       // The device dropped the connection: it is most likely rebooting into the new firmware.
       show(status, true, '设备已断开，可能正在重启，请稍后刷新页面');
     });
+}
+
+function openDoor() {
+  var status = $('doorStatus'), btn = $('openBtn');
+  btn.disabled = true;
+  status.textContent = '';
+  postForm('/door/open', {})
+    .then(function (r) { return r.text().then(function (t) { return { ok: r.ok, text: t }; }); })
+    .then(function (res) { show(status, res.ok, res.text); })
+    .catch(function (e) { show(status, false, e.message); })
+    .finally(function () { btn.disabled = false; });
 }
 
 function loadInfo() {

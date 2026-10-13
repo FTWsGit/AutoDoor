@@ -13,6 +13,7 @@
 #include "esp_system.h"
 #include "esp_timer.h"
 
+#include "door.h"
 #include "ota_mgr.h"
 #include "wifi_mgr.h"
 
@@ -223,6 +224,24 @@ static esp_err_t ota_status_get_handler(httpd_req_t *req)
     return httpd_resp_sendstr(req, json);
 }
 
+static esp_err_t door_open_post_handler(httpd_req_t *req)
+{
+    esp_err_t err = door_open();
+    if (err == ESP_ERR_INVALID_STATE) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "门控尚未初始化");
+        return ESP_OK;
+    }
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "cannot open door: %s", esp_err_to_name(err));
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "开门失败");
+        return ESP_OK;
+    }
+
+    ESP_LOGI(TAG, "door opened via web ui");
+    httpd_resp_set_type(req, "text/plain; charset=utf-8");
+    return httpd_resp_sendstr(req, "已开门");
+}
+
 static esp_err_t favicon_handler(httpd_req_t *req)
 {
     httpd_resp_set_status(req, "204 No Content");
@@ -238,6 +257,7 @@ static const httpd_uri_t s_routes[] = {
     {.uri = "/wifi_sta", .method = HTTP_POST, .handler = wifi_sta_post_handler},
     {.uri = "/ota", .method = HTTP_POST, .handler = ota_post_handler},
     {.uri = "/ota/status", .method = HTTP_GET, .handler = ota_status_get_handler},
+    {.uri = "/door/open", .method = HTTP_POST, .handler = door_open_post_handler},
     {.uri = "/favicon.ico", .method = HTTP_GET, .handler = favicon_handler},
 };
 

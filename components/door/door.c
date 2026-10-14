@@ -13,9 +13,9 @@
 static const char *TAG = "door";
 static TaskHandle_t s_task;
 
-static void move_to(uint32_t pulse_us, const char *what)
+static void move_to(uint8_t angle_deg, servo_hold_t hold, const char *what)
 {
-    esp_err_t err = servo_set_pulse_us(pulse_us);
+    esp_err_t err = servo_set_angle(angle_deg, hold);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "failed to move to %s position: %s", what, esp_err_to_name(err));
     }
@@ -31,7 +31,7 @@ static void door_task(void *arg)
         xTaskNotifyWait(0, OPEN_NOTIFY_BIT, &bits, portMAX_DELAY);
 
         ESP_LOGI(TAG, "opening");
-        move_to(CONFIG_AUTODOOR_DOOR_OPEN_US, "open");
+        move_to(CONFIG_AUTODOOR_DOOR_OPEN_DEG, SERVO_HOLD_KEEP, "open");
 
         // Every open command sets OPEN_NOTIFY_BIT and restarts the holding
         // count down; only when no new command arrives within the hold window
@@ -42,7 +42,7 @@ static void door_task(void *arg)
             ESP_LOGI(TAG, "hold restarted by open command");
         }
 
-        move_to(CONFIG_AUTODOOR_DOOR_CLOSED_US, "closed");
+        move_to(CONFIG_AUTODOOR_DOOR_CLOSED_DEG, SERVO_HOLD_RELEASE_LATER, "closed");
         ESP_LOGI(TAG, "closed");
     }
 }
@@ -53,7 +53,7 @@ esp_err_t door_init(void)
 
     const servo_config_t servo_config = {
         .gpio = CONFIG_AUTODOOR_SERVO_GPIO,
-        .initial_pulse_us = CONFIG_AUTODOOR_DOOR_CLOSED_US,
+        .initial_angle = CONFIG_AUTODOOR_DOOR_CLOSED_DEG,
     };
     ESP_RETURN_ON_ERROR(servo_init(&servo_config), TAG, "servo init failed");
 

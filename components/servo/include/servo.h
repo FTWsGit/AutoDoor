@@ -5,14 +5,30 @@
 #include "driver/gpio.h"
 #include "esp_err.h"
 
-/* Pulse widths outside this range are rejected to protect the servo mechanics. */
-#define SERVO_MIN_PULSE_US 500
-#define SERVO_MAX_PULSE_US 2500
+/**
+ * Servo position, expressed in degrees.
+ *
+ * Angle is the servo's own semantic: 0 deg maps to SERVO_MIN_PULSE_US and
+ * SERVO_MAX_ANGLE deg maps to SERVO_MAX_PULSE_US, linearly. Callers never
+ * deal with pulse widths.
+ */
+#define SERVO_MIN_ANGLE 0
+#define SERVO_MAX_ANGLE 180
 
 typedef struct {
-    gpio_num_t gpio;           /* PWM output pin */
-    uint32_t initial_pulse_us; /* pulse emitted as soon as the output is enabled */
+    gpio_num_t gpio;        /* PWM output pin */
+    uint8_t initial_angle;  /* angle applied as soon as the output is enabled */
 } servo_config_t;
+
+/**
+ * How the servo should hold the target position once reached.
+ * The caller expresses the intent (which position needs sustained torque);
+ * the servo driver decides how that is realised (e.g. stopping the PWM output).
+ */
+typedef enum {
+    SERVO_HOLD_KEEP = 0,      /* keep driving the servo until the next command */
+    SERVO_HOLD_RELEASE_LATER, /* keep driving until settled, then de-energise */
+} servo_hold_t;
 
 /**
  * @brief Configure LEDC (50 Hz PWM) for a single hobby servo.
@@ -25,8 +41,11 @@ typedef struct {
 esp_err_t servo_init(const servo_config_t *config);
 
 /**
- * @brief Move the servo by setting the PWM pulse width.
+ * @brief Move the servo to the given angle, with the requested holding behaviour.
+ *
+ * @param angle_deg target angle, 0..SERVO_MAX_ANGLE
+ * @param hold whether to keep torque after settling or de-energise
  *
  * @return ESP_OK, ESP_ERR_INVALID_STATE (not initialised) or ESP_ERR_INVALID_ARG (out of range).
  */
-esp_err_t servo_set_pulse_us(uint32_t pulse_us);
+esp_err_t servo_set_angle(uint8_t angle_deg, servo_hold_t hold);

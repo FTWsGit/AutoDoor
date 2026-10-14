@@ -89,6 +89,10 @@ static void mqtt_event_handler(void *arg, esp_event_base_t base, int32_t id, voi
         break;
 
     case MQTT_EVENT_DATA:
+        if (event->retain) { /* a retained open command would re-fire on every reconnect */
+            ESP_LOGW(TAG, "dropping retained message");
+            break;
+        }
         if (event->current_data_offset != 0 || event->data_len != event->total_data_len) {
             ESP_LOGW(TAG, "dropping fragmented message (%d of %d bytes)", event->data_len,
                      event->total_data_len);
@@ -125,6 +129,7 @@ esp_err_t mqtt_mgr_start(const mqtt_mgr_config_t *config)
     const esp_mqtt_client_config_t mqtt_config = {
         .broker.address.uri = CONFIG_AUTODOOR_MQTT_BROKER,
         .credentials.client_id = CONFIG_AUTODOOR_MQTT_CLIENT_ID,
+        .session.keepalive = 30, /* default 120 s is too slow to notice a half-open TCP link */
         .broker.verification.crt_bundle_attach = esp_crt_bundle_attach,
     };
     esp_mqtt_client_handle_t client = esp_mqtt_client_init(&mqtt_config);

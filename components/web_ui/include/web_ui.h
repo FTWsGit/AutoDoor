@@ -5,7 +5,7 @@
 #include "esp_err.h"
 
 /**
- * @brief Start the configuration web server (port 80).
+ * @brief Start the configuration web server (HTTPS, port 443).
  *
  * Routes: GET /, GET /info, POST /wifi_sta, POST /ota, GET /ota/status.
  * The network stack must be initialised (esp_netif_init) before calling.

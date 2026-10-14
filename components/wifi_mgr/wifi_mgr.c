@@ -19,8 +19,10 @@
 #define NVS_KEY_PASSWORD "password"
 
 #define RECONNECT_BASE_DELAY_MS 1000
-#define RECONNECT_MAX_DELAY_MS  30000
-#define RECONNECT_MAX_SHIFT     5 /* 1 s << 5 = 32 s, capped to RECONNECT_MAX_DELAY_MS */
+#define RECONNECT_MAX_DELAY_MS  300000
+/* Frequent STA scans while the router is down disrupt the config AP (single radio, one
+ * channel), so back off slowly: 1 s << 9 = 512 s, capped to RECONNECT_MAX_DELAY_MS. */
+#define RECONNECT_MAX_SHIFT     9
 
 static const char *TAG = "wifi_mgr";
 

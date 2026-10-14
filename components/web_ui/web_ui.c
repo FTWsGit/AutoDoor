@@ -286,7 +286,7 @@ esp_err_t web_ui_start(void)
     }
 
     s_server = server;
-    ESP_LOGI(TAG, "listening on port %d", config.httpd.ctrl_port);
+    ESP_LOGI(TAG, "listening on port %d", config.port_secure);
     return ESP_OK;
 }
 

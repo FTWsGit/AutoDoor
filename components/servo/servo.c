@@ -6,7 +6,7 @@
 #include "esp_check.h"
 #include "esp_timer.h"
 
-/* Pulse widths outside this range are rejected to protect the servo mechanics. */
+/* 0..SERVO_MAX_ANGLE is mapped linearly onto this pulse range; the output never leaves it. */
 #define SERVO_MIN_PULSE_US 500
 #define SERVO_MAX_PULSE_US 2500
 
@@ -37,17 +37,24 @@ static uint32_t angle_to_pulse_us(uint8_t angle_deg)
     return SERVO_MAX_PULSE_US - scaled;
 }
 
-static void drive_duty(uint32_t duty)
+static esp_err_t drive_duty(uint32_t duty)
 {
-    ESP_ERROR_CHECK(ledc_set_duty(SERVO_LEDC_MODE, SERVO_LEDC_CHANNEL, duty));
-    ESP_ERROR_CHECK(ledc_update_duty(SERVO_LEDC_MODE, SERVO_LEDC_CHANNEL));
+    ESP_RETURN_ON_ERROR(ledc_set_duty(SERVO_LEDC_MODE, SERVO_LEDC_CHANNEL, duty), TAG,
+                        "set duty failed");
+    ESP_RETURN_ON_ERROR(ledc_update_duty(SERVO_LEDC_MODE, SERVO_LEDC_CHANNEL), TAG,
+                        "update duty failed");
+    return ESP_OK;
 }
 
 /* Runs from the esp_timer task after the settle delay: stop the PWM output so
  * the servo de-energises (no holding torque, no buzz, near-zero current). */
 static void release_timer_cb(void *arg)
 {
-    ESP_ERROR_CHECK(ledc_stop(SERVO_LEDC_MODE, SERVO_LEDC_CHANNEL, 0));
+    esp_err_t err = ledc_stop(SERVO_LEDC_MODE, SERVO_LEDC_CHANNEL, 0);
+    if (err != ESP_OK) {
+        /* The servo just stays energised until the next command: wasteful, not dangerous. */
+        ESP_LOGE(TAG, "cannot release servo: %s", esp_err_to_name(err));
+    }
 }
 
 static void cancel_release(void)
@@ -57,10 +64,10 @@ static void cancel_release(void)
     }
 }
 
-static void schedule_release(void)
+static esp_err_t schedule_release(void)
 {
     cancel_release();
-    ESP_ERROR_CHECK(esp_timer_start_once(s_release_timer, SERVO_RELEASE_DELAY_MS * 1000ULL));
+    return esp_timer_start_once(s_release_timer, SERVO_RELEASE_DELAY_MS * 1000ULL);
 }
 
 esp_err_t servo_init(const servo_config_t *config)
@@ -113,10 +120,11 @@ esp_err_t servo_set_angle(uint8_t angle_deg, servo_hold_t hold)
      * driven continuously while moving, and the timer is re-armed afterwards. */
     cancel_release();
 
-    drive_duty(pulse_to_duty(angle_to_pulse_us(angle_deg)));
+    ESP_RETURN_ON_ERROR(drive_duty(pulse_to_duty(angle_to_pulse_us(angle_deg))), TAG,
+                        "cannot drive servo");
 
     if (hold == SERVO_HOLD_RELEASE_LATER) {
-        schedule_release();
+        ESP_RETURN_ON_ERROR(schedule_release(), TAG, "cannot schedule release");
     }
     return ESP_OK;
 }

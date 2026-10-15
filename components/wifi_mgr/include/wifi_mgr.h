@@ -12,7 +12,8 @@
  *
  * - Always opens the configuration access point.
  * - If credentials are stored in NVS, also connects as a station and keeps reconnecting
- *   with exponential backoff (1 s ... 30 s) for as long as the link is down.
+ *   with exponential backoff (1 s doubling up to 300 s, deliberately slow so that STA scans
+ *   do not keep disturbing the config AP) for as long as the link is down.
  *
  * Requires the default event loop. Missing/unreadable credentials are not an error: the
  * device simply stays in AP-only mode. On failure the Wi-Fi stack may be partially set up,

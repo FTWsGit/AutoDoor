@@ -17,8 +17,8 @@ bool door_is_ready(void);
 /**
  * @brief Request one open -> hold -> close cycle. Returns immediately.
  *
- * Callable from any task (not from an ISR). Requests made while a cycle is in
- * progress are queued and run one after another.
+ * Callable from any task (not from an ISR). Requests are coalesced, not queued: a request
+ * made while the door is open restarts the hold countdown, so one cycle covers them all.
  *
  * @return ESP_OK, or ESP_ERR_INVALID_STATE if the door is not initialised.
  */

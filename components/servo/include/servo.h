@@ -8,9 +8,9 @@
 /**
  * Servo position, expressed in degrees.
  *
- * Angle is the servo's own semantic: 0 deg maps to SERVO_MIN_PULSE_US and
- * SERVO_MAX_ANGLE deg maps to SERVO_MAX_PULSE_US, linearly. Callers never
- * deal with pulse widths.
+ * Angle is the servo's own semantic. The direction is reversed relative to the usual
+ * convention: 0 deg maps to the longest pulse and SERVO_MAX_ANGLE deg to the shortest,
+ * linearly (see servo.c for the pulse limits). Callers never deal with pulse widths.
  */
 #define SERVO_MIN_ANGLE 0
 #define SERVO_MAX_ANGLE 180
@@ -46,6 +46,7 @@ esp_err_t servo_init(const servo_config_t *config);
  * @param angle_deg target angle, 0..SERVO_MAX_ANGLE
  * @param hold whether to keep torque after settling or de-energise
  *
- * @return ESP_OK, ESP_ERR_INVALID_STATE (not initialised) or ESP_ERR_INVALID_ARG (out of range).
+ * @return ESP_OK, ESP_ERR_INVALID_STATE (not initialised), ESP_ERR_INVALID_ARG (out of range),
+ *         otherwise the error reported by the LEDC or esp_timer driver.
  */
 esp_err_t servo_set_angle(uint8_t angle_deg, servo_hold_t hold);

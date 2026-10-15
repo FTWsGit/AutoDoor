@@ -57,6 +57,10 @@ esp_err_t door_init(void)
     };
     ESP_RETURN_ON_ERROR(servo_init(&servo_config), TAG, "servo init failed");
 
+    /* servo_init() already drives the closed position. Arm the release too, otherwise the
+     * servo stays energised until the first open/close cycle. */
+    move_to(CONFIG_AUTODOOR_DOOR_CLOSED_DEG, SERVO_HOLD_RELEASE_LATER, "closed");
+
     TaskHandle_t task = NULL;
     BaseType_t ok = xTaskCreate(door_task, "door", DOOR_TASK_STACK, NULL, DOOR_TASK_PRIO, &task);
     ESP_RETURN_ON_FALSE(ok == pdPASS, ESP_ERR_NO_MEM, TAG, "cannot create door task");

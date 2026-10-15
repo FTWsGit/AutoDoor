@@ -13,7 +13,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
-#define OTA_TASK_STACK   8192 /* TLS needs far more than the 4 KB httpd handler stack */
+#define OTA_TASK_STACK   8192 /* TLS needs far more than the httpd handler stack */
 #define OTA_TASK_PRIO    5
 #define OTA_REBOOT_DELAY pdMS_TO_TICKS(1000)
 #define OTA_URI_SCHEME   "https://"

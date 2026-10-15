@@ -7,7 +7,8 @@
 /**
  * @brief Start the configuration web server (HTTPS, port 443).
  *
- * Routes: GET /, GET /info, POST /wifi_sta, POST /ota, GET /ota/status.
+ * Routes: GET /, GET /info, POST /wifi_sta, POST /ota, GET /ota/status, POST /door/open,
+ * GET /favicon.ico.
  * The network stack must be initialised (esp_netif_init) before calling.
  */
 esp_err_t web_ui_start(void);

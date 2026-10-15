@@ -17,8 +17,15 @@
 #include "ota_mgr.h"
 #include "wifi_mgr.h"
 
-#define BODY_MAX_LEN       512
-#define FORM_VALUE_MAX_LEN 64 /* percent-encoded; 64 characters can take up to 192 bytes */
+/* Form values arrive percent-encoded: one byte can take 3 characters ("%XX"). Every buffer
+ * below is sized for the worst case of the longest value its field accepts. */
+#define PCT_ENCODED_LEN(n) ((n) * 3 + 1) /* + NUL */
+#define SSID_FIELD_MAX     PCT_ENCODED_LEN(WIFI_MGR_SSID_MAX_LEN)
+#define PASSWD_FIELD_MAX   PCT_ENCODED_LEN(WIFI_MGR_PASSWORD_MAX_LEN)
+#define OTA_URI_FIELD_MAX  PCT_ENCODED_LEN(OTA_MGR_URI_MAX_LEN)
+/* Whole bodies: "ssid=" + value + "&passwd=" + value, and "ota_uri=" + value (each with NUL). */
+#define WIFI_BODY_MAX_LEN  (5 + SSID_FIELD_MAX + 8 + PASSWD_FIELD_MAX)
+#define OTA_BODY_MAX_LEN   (8 + OTA_URI_FIELD_MAX)
 #define MAX_RECV_TIMEOUTS  3
 #define HTTPD_STACK_SIZE   6144
 #define RESTART_DELAY_MS   1000
@@ -136,14 +143,14 @@ static esp_err_t info_get_handler(httpd_req_t *req)
 
 static esp_err_t wifi_sta_post_handler(httpd_req_t *req)
 {
-    char body[BODY_MAX_LEN];
+    char body[WIFI_BODY_MAX_LEN];
     if (read_body(req, body, sizeof(body)) != ESP_OK) {
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "长度非法或接收失败");
         return ESP_FAIL; /* close the socket: an unread body would corrupt the next request */
     }
 
-    char ssid[FORM_VALUE_MAX_LEN];
-    char passwd[FORM_VALUE_MAX_LEN];
+    char ssid[SSID_FIELD_MAX];
+    char passwd[PASSWD_FIELD_MAX];
     if (form_get(body, "ssid", ssid, sizeof(ssid)) != ESP_OK ||
         form_get(body, "passwd", passwd, sizeof(passwd)) != ESP_OK) {
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "缺少或超长的 ssid / passwd");
@@ -161,7 +168,7 @@ static esp_err_t wifi_sta_post_handler(httpd_req_t *req)
         return ESP_OK;
     }
 
-    char resp[96];
+    char resp[SSID_FIELD_MAX + 32]; /* room for the fixed text around the SSID */
     snprintf(resp, sizeof(resp), "已保存 SSID=%s, 重启中...", ssid);
     httpd_resp_set_type(req, "text/plain; charset=utf-8");
     esp_err_t send_err = httpd_resp_sendstr(req, resp);
@@ -173,13 +180,13 @@ static esp_err_t wifi_sta_post_handler(httpd_req_t *req)
 
 static esp_err_t ota_post_handler(httpd_req_t *req)
 {
-    char body[BODY_MAX_LEN];
+    char body[OTA_BODY_MAX_LEN];
     if (read_body(req, body, sizeof(body)) != ESP_OK) {
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "长度非法或接收失败");
         return ESP_FAIL;
     }
 
-    char uri[FORM_VALUE_MAX_LEN];
+    char uri[OTA_URI_FIELD_MAX];
     if (form_get(body, "ota_uri", uri, sizeof(uri)) != ESP_OK) {
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "缺少 ota_uri");
         return ESP_OK;
@@ -268,6 +275,7 @@ esp_err_t web_ui_start(void)
     httpd_ssl_config_t config = HTTPD_SSL_CONFIG_DEFAULT();
     config.httpd.stack_size = HTTPD_STACK_SIZE;
     config.httpd.lru_purge_enable = true;
+    config.httpd.max_uri_handlers = sizeof(s_routes) / sizeof(s_routes[0]); /* the IDF default is 8 */
     config.servercert = esp_server_crt_start;
     config.servercert_len = esp_server_crt_end - esp_server_crt_start;
     config.prvtkey_pem = esp_server_key_start;

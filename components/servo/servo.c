@@ -4,14 +4,10 @@
 
 #include "driver/ledc.h"
 #include "esp_check.h"
-#include "esp_timer.h"
 
 /* 0..SERVO_MAX_ANGLE is mapped linearly onto this pulse range; the output never leaves it. */
 #define SERVO_MIN_PULSE_US 500
 #define SERVO_MAX_PULSE_US 2500
-
-/* Delay between reaching the target angle and de-energising the servo. */
-#define SERVO_RELEASE_DELAY_MS 1000
 
 #define SERVO_LEDC_MODE    LEDC_LOW_SPEED_MODE
 #define SERVO_LEDC_TIMER   LEDC_TIMER_0
@@ -22,7 +18,6 @@
 
 static const char *TAG = "servo";
 static bool s_ready;
-static esp_timer_handle_t s_release_timer;
 
 static uint32_t pulse_to_duty(uint32_t pulse_us)
 {
@@ -44,30 +39,6 @@ static esp_err_t drive_duty(uint32_t duty)
     ESP_RETURN_ON_ERROR(ledc_update_duty(SERVO_LEDC_MODE, SERVO_LEDC_CHANNEL), TAG,
                         "update duty failed");
     return ESP_OK;
-}
-
-/* Runs from the esp_timer task after the settle delay: stop the PWM output so
- * the servo de-energises (no holding torque, no buzz, near-zero current). */
-static void release_timer_cb(void *arg)
-{
-    esp_err_t err = ledc_stop(SERVO_LEDC_MODE, SERVO_LEDC_CHANNEL, 0);
-    if (err != ESP_OK) {
-        /* The servo just stays energised until the next command: wasteful, not dangerous. */
-        ESP_LOGE(TAG, "cannot release servo: %s", esp_err_to_name(err));
-    }
-}
-
-static void cancel_release(void)
-{
-    if (s_release_timer != NULL && esp_timer_is_active(s_release_timer)) {
-        esp_timer_stop(s_release_timer);
-    }
-}
-
-static esp_err_t schedule_release(void)
-{
-    cancel_release();
-    return esp_timer_start_once(s_release_timer, SERVO_RELEASE_DELAY_MS * 1000ULL);
 }
 
 esp_err_t servo_init(const servo_config_t *config)
@@ -99,32 +70,25 @@ esp_err_t servo_init(const servo_config_t *config)
     };
     ESP_RETURN_ON_ERROR(ledc_channel_config(&channel_config), TAG, "LEDC channel config failed");
 
-    const esp_timer_create_args_t release_timer_args = {
-        .callback = release_timer_cb,
-        .name = "servo_release",
-    };
-    ESP_RETURN_ON_ERROR(esp_timer_create(&release_timer_args, &s_release_timer), TAG,
-                        "release timer create failed");
-
     s_ready = true;
     return ESP_OK;
 }
 
-esp_err_t servo_set_angle(uint8_t angle_deg, servo_hold_t hold)
+esp_err_t servo_set_angle(uint8_t angle_deg)
 {
     ESP_RETURN_ON_FALSE(s_ready, ESP_ERR_INVALID_STATE, TAG, "not initialised");
     ESP_RETURN_ON_FALSE(angle_deg <= SERVO_MAX_ANGLE, ESP_ERR_INVALID_ARG, TAG,
                         "angle %u deg out of range", (unsigned)angle_deg);
 
-    /* A new command always cancels a pending release first: the servo must be
-     * driven continuously while moving, and the timer is re-armed afterwards. */
-    cancel_release();
-
     ESP_RETURN_ON_ERROR(drive_duty(pulse_to_duty(angle_to_pulse_us(angle_deg))), TAG,
                         "cannot drive servo");
 
-    if (hold == SERVO_HOLD_RELEASE_LATER) {
-        ESP_RETURN_ON_ERROR(schedule_release(), TAG, "cannot schedule release");
-    }
+    return ESP_OK;
+}
+
+esp_err_t servo_rest(void)
+{
+    ESP_RETURN_ON_FALSE(s_ready, ESP_ERR_INVALID_STATE, TAG, "not initialised");
+    ESP_RETURN_ON_ERROR(ledc_stop(SERVO_LEDC_MODE, SERVO_LEDC_CHANNEL, 0), TAG, "stop failed");
     return ESP_OK;
 }

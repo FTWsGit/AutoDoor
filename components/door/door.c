@@ -9,15 +9,25 @@
 
 #define DOOR_TASK_STACK 3072
 #define DOOR_TASK_PRIO  3
+#define DOOR_SETTLE_MS 1000
 
 static const char *TAG = "door";
 static TaskHandle_t s_task;
 
-static void move_to(uint8_t angle_deg, servo_hold_t hold, const char *what)
+static void move_to(uint8_t angle_deg, const char *what)
 {
-    esp_err_t err = servo_set_angle(angle_deg, hold);
+    esp_err_t err = servo_set_angle(angle_deg);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "failed to move to %s position: %s", what, esp_err_to_name(err));
+    }
+}
+
+static void rest_servo(void)
+{
+    esp_err_t err = servo_rest();
+    if (err != ESP_OK) {
+        /* The servo just stays energised until the next move: wasteful, not dangerous. */
+        ESP_LOGE(TAG, "failed to release servo: %s", esp_err_to_name(err));
     }
 }
 
@@ -26,12 +36,19 @@ static void move_to(uint8_t angle_deg, servo_hold_t hold, const char *what)
 static void door_task(void *arg)
 {
     uint32_t bits = 0;
+    /* servo_init() has just driven the closed position: give it time to get there, then rest. */
+    TickType_t wait = pdMS_TO_TICKS(DOOR_SETTLE_MS);
 
     for (;;) {
-        xTaskNotifyWait(0, OPEN_NOTIFY_BIT, &bits, portMAX_DELAY);
+        /* Idle (servo at rest) waits forever; after a move, the wait doubles as the settle time. */
+        if (xTaskNotifyWait(0, OPEN_NOTIFY_BIT, &bits, wait) == pdFALSE) {
+            rest_servo();
+            wait = portMAX_DELAY;
+            continue;
+        }
 
         ESP_LOGI(TAG, "opening");
-        move_to(CONFIG_AUTODOOR_DOOR_OPEN_DEG, SERVO_HOLD_KEEP, "open");
+        move_to(CONFIG_AUTODOOR_DOOR_OPEN_DEG, "open");
 
         // Every open command sets OPEN_NOTIFY_BIT and restarts the holding
         // count down; only when no new command arrives within the hold window
@@ -42,8 +59,9 @@ static void door_task(void *arg)
             ESP_LOGI(TAG, "hold restarted by open command");
         }
 
-        move_to(CONFIG_AUTODOOR_DOOR_CLOSED_DEG, SERVO_HOLD_RELEASE_LATER, "closed");
+        move_to(CONFIG_AUTODOOR_DOOR_CLOSED_DEG, "closed");
         ESP_LOGI(TAG, "closed");
+        wait = pdMS_TO_TICKS(DOOR_SETTLE_MS);
     }
 }
 
@@ -59,7 +77,7 @@ esp_err_t door_init(void)
 
     /* servo_init() already drives the closed position. Arm the release too, otherwise the
      * servo stays energised until the first open/close cycle. */
-    move_to(CONFIG_AUTODOOR_DOOR_CLOSED_DEG, SERVO_HOLD_RELEASE_LATER, "closed");
+    move_to(CONFIG_AUTODOOR_DOOR_CLOSED_DEG, "closed");
 
     TaskHandle_t task = NULL;
     BaseType_t ok = xTaskCreate(door_task, "door", DOOR_TASK_STACK, NULL, DOOR_TASK_PRIO, &task);

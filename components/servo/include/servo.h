@@ -21,16 +21,6 @@ typedef struct {
 } servo_config_t;
 
 /**
- * How the servo should hold the target position once reached.
- * The caller expresses the intent (which position needs sustained torque);
- * the servo driver decides how that is realised (e.g. stopping the PWM output).
- */
-typedef enum {
-    SERVO_HOLD_KEEP = 0,      /* keep driving the servo until the next command */
-    SERVO_HOLD_RELEASE_LATER, /* keep driving until settled, then de-energise */
-} servo_hold_t;
-
-/**
  * @brief Configure LEDC (50 Hz PWM) for a single hobby servo.
  *
  * This is a plain hardware driver: it knows nothing about doors or directions.
@@ -41,12 +31,22 @@ typedef enum {
 esp_err_t servo_init(const servo_config_t *config);
 
 /**
- * @brief Move the servo to the given angle, with the requested holding behaviour.
+ * @brief Drive the servo to the given angle. Re-enables the output if it was at rest.
+ *
+ * Returns immediately; the servo needs time to get there and keeps being driven 
+ * (and holding torque) until servo_rest() is called.
  *
  * @param angle_deg target angle, 0..SERVO_MAX_ANGLE
- * @param hold whether to keep torque after settling or de-energise
  *
  * @return ESP_OK, ESP_ERR_INVALID_STATE (not initialised), ESP_ERR_INVALID_ARG (out of range),
- *         otherwise the error reported by the LEDC or esp_timer driver.
+ *         otherwise the error reported by the LEDC driver.
  */
-esp_err_t servo_set_angle(uint8_t angle_deg, servo_hold_t hold);
+esp_err_t servo_set_angle(uint8_t angle_deg);
+
+/**
+ * @brief Stop the PWM output so the servo de-energises (no holding torque, no buzz, near-zero
+ *        current). The next servo_set_angle() drives it again.
+ *
+ * @return ESP_OK, ESP_ERR_INVALID_STATE (not initialised), otherwise the LEDC driver's error.
+ */
+esp_err_t servo_rest(void);

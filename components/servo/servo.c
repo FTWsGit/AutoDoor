@@ -32,13 +32,16 @@ static bool s_ready;
 static esp_pm_lock_handle_t s_pm_lock;
 static bool s_pm_held;
 
-static void pm_hold(void)
+static esp_err_t pm_hold(void)
 {
-    if (s_pm_lock != NULL && !s_pm_held) {
-        if (esp_pm_lock_acquire(s_pm_lock) == ESP_OK) {
-            s_pm_held = true;
-        }
+    if (s_pm_lock == NULL || s_pm_held) {
+        return ESP_OK;
     }
+    esp_err_t err = esp_pm_lock_acquire(s_pm_lock);
+    if (err == ESP_OK) {
+        s_pm_held = true;
+    }
+    return err;
 }
 
 static void pm_release(void)
@@ -49,7 +52,7 @@ static void pm_release(void)
     }
 }
 #else
-static inline void pm_hold(void) {}
+static inline esp_err_t pm_hold(void) { return ESP_OK; }
 static inline void pm_release(void) {}
 #endif
 
@@ -77,8 +80,10 @@ static esp_err_t drive_duty(uint32_t duty)
 
 esp_err_t servo_init(const servo_config_t *config)
 {
+    if (s_ready) { /* idempotent: a retry after a partial failure is fine */
+        return ESP_OK;
+    }
     ESP_RETURN_ON_FALSE(config != NULL, ESP_ERR_INVALID_ARG, TAG, "config is NULL");
-    ESP_RETURN_ON_FALSE(!s_ready, ESP_ERR_INVALID_STATE, TAG, "already initialised");
     ESP_RETURN_ON_FALSE(GPIO_IS_VALID_OUTPUT_GPIO(config->gpio), ESP_ERR_INVALID_ARG, TAG,
                         "GPIO %d cannot be used as output", config->gpio);
     ESP_RETURN_ON_FALSE(config->initial_angle <= SERVO_MAX_ANGLE, ESP_ERR_INVALID_ARG, TAG,
@@ -88,7 +93,7 @@ esp_err_t servo_init(const servo_config_t *config)
 #if CONFIG_PM_ENABLE
     ESP_GOTO_ON_ERROR(esp_pm_lock_create(ESP_PM_APB_FREQ_MAX, 0, "servo", &s_pm_lock), err, TAG,
                       "PM lock create failed");
-    pm_hold();
+    ESP_GOTO_ON_ERROR(pm_hold(), err, TAG, "PM lock acquire failed");
 #endif
 
     const ledc_timer_config_t timer_config = {
@@ -133,7 +138,8 @@ esp_err_t servo_set_angle(uint8_t angle_deg)
     ESP_RETURN_ON_FALSE(angle_deg <= SERVO_MAX_ANGLE, ESP_ERR_INVALID_ARG, TAG,
                         "angle %u deg out of range", (unsigned)angle_deg);
 
-    pm_hold(); /* must be held before the PWM output is (re)enabled */
+    /* hold APB freq (and keep light sleep out) before the PWM output is (re)enabled */
+    ESP_RETURN_ON_ERROR(pm_hold(), TAG, "cannot hold PM lock");
     ESP_RETURN_ON_ERROR(drive_duty(pulse_to_duty(angle_to_pulse_us(angle_deg))), TAG,
                         "cannot drive servo");
 

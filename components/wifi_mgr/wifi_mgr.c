@@ -24,6 +24,9 @@
  * channel), so back off slowly: 1 s << 9 = 512 s, capped to RECONNECT_MAX_DELAY_MS. */
 #define RECONNECT_MAX_SHIFT     9
 
+/* Delay before retrying a failed switch back to AP+STA. */
+#define AP_MODE_RETRY_DELAY_US  (5 * 1000000ULL)
+
 /* The config AP keeps the radio awake (it must beacon every ~100 ms), so it is only kept up while
  * it is needed: right after boot, and whenever the station has no IP. */
 #define AP_KEEP_AFTER_IP_US     ((uint64_t)CONFIG_AUTODOOR_AP_KEEP_AFTER_IP_S * 1000000ULL)
@@ -152,14 +155,18 @@ static void ap_off_timer_cb(void *arg)
     }
 
     wifi_sta_list_t clients;
-    if (esp_wifi_ap_get_sta_list(&clients) == ESP_OK && clients.num > 0) {
-        /* Someone is using the config page right now: look again later. */
+    esp_err_t err = esp_wifi_ap_get_sta_list(&clients);
+    if (err == ESP_ERR_WIFI_MODE) {
+        return; /* AP is already off (e.g. re-connected after it was switched off) */
+    }
+    if (err != ESP_OK || clients.num > 0) {
+        /* unknown or busy: check again later rather than risk dropping a user */
         esp_timer_start_once(s_ap_off_timer, AP_KEEP_AFTER_IP_US);
         return;
     }
 
     ESP_LOGI(TAG, "station is up, switching to STA-only to save power");
-    esp_err_t err = esp_wifi_set_mode(WIFI_MODE_STA);
+    err = esp_wifi_set_mode(WIFI_MODE_STA);
     if (err != ESP_OK) {
         ESP_LOGW(TAG, "cannot switch to STA-only: %s", esp_err_to_name(err));
     }
@@ -175,6 +182,8 @@ static void ap_on_timer_cb(void *arg)
     esp_err_t err = esp_wifi_set_mode(WIFI_MODE_APSTA);
     if (err != ESP_OK) {
         ESP_LOGW(TAG, "cannot switch to AP+STA: %s", esp_err_to_name(err));
+        /* without the AP the device is unreachable: try again (stops once an IP is back) */
+        esp_timer_start_once(s_ap_on_timer, AP_MODE_RETRY_DELAY_US);
     }
 }
 

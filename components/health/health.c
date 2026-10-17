@@ -33,10 +33,11 @@ static size_t count_failures(bool log_failures)
 
 static void health_task(void *arg)
 {
-    const TickType_t deadline =
-        xTaskGetTickCount() + pdMS_TO_TICKS(CONFIG_AUTODOOR_HEALTH_TIMEOUT_S * 1000);
+    const TickType_t start = xTaskGetTickCount();
+    const TickType_t budget = pdMS_TO_TICKS(CONFIG_AUTODOOR_HEALTH_TIMEOUT_S * 1000);
 
-    while (count_failures(false) != 0 && xTaskGetTickCount() < deadline) {
+    /* difference form: safe across tick wraparound on long-running devices */
+    while (count_failures(false) != 0 && xTaskGetTickCount() - start < budget) {
         vTaskDelay(HEALTH_POLL_PERIOD);
     }
 

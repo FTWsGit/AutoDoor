@@ -24,12 +24,20 @@
  * channel), so back off slowly: 1 s << 9 = 512 s, capped to RECONNECT_MAX_DELAY_MS. */
 #define RECONNECT_MAX_SHIFT     9
 
+/* The config AP keeps the radio awake (it must beacon every ~100 ms), so it is only kept up while
+ * it is needed: right after boot, and whenever the station has no IP. */
+#define AP_KEEP_AFTER_IP_US     ((uint64_t)CONFIG_AUTODOOR_AP_KEEP_AFTER_IP_S * 1000000ULL)
+#define AP_RETURN_AFTER_LOSS_US ((uint64_t)CONFIG_AUTODOOR_AP_RETURN_AFTER_LOSS_S * 1000000ULL)
+
 static const char *TAG = "wifi_mgr";
 
 static bool s_started;
 static volatile bool s_has_ip;
 static volatile uint8_t s_retry_count; /* only used for backoff, benign if racy */
 static esp_timer_handle_t s_reconnect_timer;
+static bool s_sta_enabled; /* credentials are saved, so the station is in use */
+static esp_timer_handle_t s_ap_off_timer;
+static esp_timer_handle_t s_ap_on_timer;
 
 /* ---- sntp ------------------------------------------------------------------------------- */
 static void start_sntp_once(void)
@@ -135,6 +143,65 @@ static void reconnect_timer_cb(void *arg)
     }
 }
 
+/* ---- config AP on/off policy ------------------------------------------------------------ */
+
+static void ap_off_timer_cb(void *arg)
+{
+    if (!s_has_ip) {
+        return;
+    }
+
+    wifi_sta_list_t clients;
+    if (esp_wifi_ap_get_sta_list(&clients) == ESP_OK && clients.num > 0) {
+        /* Someone is using the config page right now: look again later. */
+        esp_timer_start_once(s_ap_off_timer, AP_KEEP_AFTER_IP_US);
+        return;
+    }
+
+    ESP_LOGI(TAG, "station is up, switching to STA-only to save power");
+    esp_err_t err = esp_wifi_set_mode(WIFI_MODE_STA);
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "cannot switch to STA-only: %s", esp_err_to_name(err));
+    }
+}
+
+static void ap_on_timer_cb(void *arg)
+{
+    if (s_has_ip) {
+        return;
+    }
+
+    ESP_LOGW(TAG, "no IP for a while, bringing the config AP back");
+    esp_err_t err = esp_wifi_set_mode(WIFI_MODE_APSTA);
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "cannot switch to AP+STA: %s", esp_err_to_name(err));
+    }
+}
+
+/* Station got an IP: let the AP go after a grace period. */
+static void ap_policy_on_connected(void)
+{
+    if (!s_sta_enabled) {
+        return; /* AP-only: it is the only way in, never switch it off */
+    }
+    esp_timer_stop(s_ap_on_timer);  /* fails harmlessly if the timer is not running */
+    esp_timer_stop(s_ap_off_timer);
+    esp_timer_start_once(s_ap_off_timer, AP_KEEP_AFTER_IP_US);
+}
+
+/* Station lost its IP: if that lasts, bring the AP back. Called on every failed retry, so the
+ * countdown is only started once. */
+static void ap_policy_on_disconnected(void)
+{
+    if (!s_sta_enabled) {
+        return;
+    }
+    esp_timer_stop(s_ap_off_timer);
+    if (!esp_timer_is_active(s_ap_on_timer)) {
+        esp_timer_start_once(s_ap_on_timer, AP_RETURN_AFTER_LOSS_US);
+    }
+}
+
 /* ---- event handling --------------------------------------------------------------------- */
 
 static void wifi_event_handler(void *arg, esp_event_base_t base, int32_t id, void *data)
@@ -149,6 +216,7 @@ static void wifi_event_handler(void *arg, esp_event_base_t base, int32_t id, voi
         const wifi_event_sta_disconnected_t *info = data;
         ESP_LOGW(TAG, "station disconnected (reason %d)", info->reason);
         s_has_ip = false;
+        ap_policy_on_disconnected();
         schedule_reconnect();
         break;
     }
@@ -178,9 +246,11 @@ static void ip_event_handler(void *arg, esp_event_base_t base, int32_t id, void 
         start_sntp_once(); // correct the time for once
         s_retry_count = 0;
         s_has_ip = true;
+        ap_policy_on_connected();
     } else if (id == IP_EVENT_STA_LOST_IP) {
         ESP_LOGW(TAG, "lost IP");
         s_has_ip = false;
+        ap_policy_on_disconnected();
     }
 }
 
@@ -199,6 +269,19 @@ esp_err_t wifi_mgr_start(void)
     };
     ESP_RETURN_ON_ERROR(esp_timer_create(&timer_args, &s_reconnect_timer), TAG,
                         "cannot create reconnect timer");
+
+    const esp_timer_create_args_t ap_off_args = {
+        .callback = ap_off_timer_cb,
+        .name = "wifi_ap_off",
+    };
+    ESP_RETURN_ON_ERROR(esp_timer_create(&ap_off_args, &s_ap_off_timer), TAG,
+                        "cannot create AP-off timer");
+    const esp_timer_create_args_t ap_on_args = {
+        .callback = ap_on_timer_cb,
+        .name = "wifi_ap_on",
+    };
+    ESP_RETURN_ON_ERROR(esp_timer_create(&ap_on_args, &s_ap_on_timer), TAG,
+                        "cannot create AP-on timer");
 
     ESP_RETURN_ON_ERROR(
         esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, wifi_event_handler, NULL), TAG,
@@ -224,6 +307,7 @@ esp_err_t wifi_mgr_start(void)
     char password[WIFI_MGR_PASSWORD_MAX_LEN + 1] = {0};
     esp_err_t cred_err = load_credentials(ssid, sizeof(ssid), password, sizeof(password));
     bool sta_enabled = (cred_err == ESP_OK);
+    s_sta_enabled = sta_enabled;
     if (cred_err == ESP_ERR_NOT_FOUND) {
         ESP_LOGW(TAG, "no saved Wi-Fi credentials, AP-only mode");
     } else if (cred_err != ESP_OK) {
@@ -249,11 +333,18 @@ esp_err_t wifi_mgr_start(void)
         memcpy(sta_config.sta.ssid, ssid, strnlen(ssid, sizeof(sta_config.sta.ssid)));
         memcpy(sta_config.sta.password, password,
                strnlen(password, sizeof(sta_config.sta.password)));
+        /* Only used with WIFI_PS_MAX_MODEM: wake every N beacons instead of every DTIM. */
+        sta_config.sta.listen_interval = CONFIG_AUTODOOR_WIFI_LISTEN_INTERVAL;
         ESP_RETURN_ON_ERROR(esp_wifi_set_config(WIFI_IF_STA, &sta_config), TAG,
                             "STA config failed");
     }
 
     ESP_RETURN_ON_ERROR(esp_wifi_start(), TAG, "esp_wifi_start failed");
+    /* Deepest modem sleep for the station. The AP half (while it is up) is unaffected. */
+    esp_err_t ps_err = esp_wifi_set_ps(WIFI_PS_MAX_MODEM);
+    if (ps_err != ESP_OK) {
+        ESP_LOGW(TAG, "cannot enable modem sleep: %s", esp_err_to_name(ps_err));
+    }
     ESP_LOGI(TAG, "started in %s mode", sta_enabled ? "AP+STA" : "AP-only");
     return ESP_OK;
 }

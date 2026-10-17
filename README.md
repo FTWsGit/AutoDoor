@@ -69,6 +69,13 @@ The `espressif/mqtt` component is fetched automatically.
 2. Open `https://192.168.4.1` (accept the certificate warning).
 3. Enter your router's SSID and password. The device reboots and connects.
 
+## Power
+
+- **Config AP** – after the station gets an IP the AP stays up for `AUTODOOR_AP_KEEP_AFTER_IP_S` (5 min), then the device switches to station-only so the radio can sleep. Power-cycle it to get the AP back for another window, or reach the web UI at the device's LAN IP. If the station has had no IP for `AUTODOOR_AP_RETURN_AFTER_LOSS_S` (5 min), the AP comes back by itself. With no saved Wi-Fi credentials it stays AP-only.
+- **Wi-Fi** – `WIFI_PS_MAX_MODEM` with `AUTODOOR_WIFI_LISTEN_INTERVAL` (3 beacons, ~300 ms worst-case delay for an incoming command).
+- **MQTT** – keepalive 60 s (esp-mqtt pings every keepalive/2, so every 30 s).
+- **CPU** – automatic light sleep + DFS (`CONFIG_PM_ENABLE`, `CONFIG_FREERTOS_USE_TICKLESS_IDLE`). With light sleep on, the ESP's USB serial/JTAG port disappears while the chip sleeps.
+
 ## Notes
 
 - The web UI has no login. Anyone who can reach the device (via the AP or your LAN) can open the door, change Wi-Fi settings or start an OTA.

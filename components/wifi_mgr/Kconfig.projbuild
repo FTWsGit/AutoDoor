@@ -10,6 +10,36 @@ menu "AutoDoor: AP"
 
 endmenu
 
+menu "AutoDoor: Wi-Fi power"
+
+    config AUTODOOR_WIFI_LISTEN_INTERVAL
+        int "Station listen interval (beacon intervals)"
+        range 1 10
+        default 3
+        help
+            With WIFI_PS_MAX_MODEM the station only wakes every N beacons (about 102 ms each).
+            Worst-case delay of an incoming MQTT message is roughly N * 102 ms:
+            3 = ~300 ms, 4 = ~410 ms, 5 = ~510 ms.
+
+    config AUTODOOR_AP_KEEP_AFTER_IP_S
+        int "Keep the config AP this long after the station gets an IP (s)"
+        range 30 86400
+        default 300
+        help
+            After this time the device switches to station-only mode so the radio can sleep.
+            The AP is not switched off while a client is still connected to it. Power-cycling
+            the device gives you this window again. Only applies when Wi-Fi credentials are
+            saved; without them the device stays in AP-only mode.
+
+    config AUTODOOR_AP_RETURN_AFTER_LOSS_S
+        int "Bring the config AP back after this long without an IP (s)"
+        range 30 86400
+        default 300
+        help
+            Covers a changed router or wrong password, so the device can always be reconfigured.
+
+endmenu
+
 menu "AutoDoor: SNTP"
 
     config AUTODOOR_SNTP_URL

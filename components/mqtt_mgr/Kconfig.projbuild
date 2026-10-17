@@ -8,6 +8,15 @@ menu "AutoDoor: MQTT"
         string "Broker that mqtt subscribed"
         default "mqtts://bemfa.com:9503"
 
+    config AUTODOOR_MQTT_KEEPALIVE_S
+        int "MQTT keepalive (s)"
+        range 10 1200
+        default 60
+        help
+            esp-mqtt sends a PINGREQ every keepalive/2 seconds and drops the connection if no
+            PINGRESP arrives within keepalive seconds. Bemfa's TCP protocol drops idle
+            connections after 65 s, so keep keepalive/2 well below that.
+
     config AUTODOOR_MQTT_CLIENT_ID
         string "Client ID for authorize"
         default ""

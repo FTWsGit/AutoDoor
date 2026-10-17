@@ -5,3 +5,23 @@ menu "AutoDoor: Commands"
         default "openup"
 
 endmenu
+
+menu "AutoDoor: Power"
+
+    config AUTODOOR_PM_MAX_FREQ_MHZ
+        int "Max CPU frequency (MHz)"
+        range 80 160
+        default 160
+        help
+            Used by esp_pm_configure(). The CPU only runs this fast while something needs it
+            (e.g. a TLS handshake) and scales down when idle. Ignored when
+            CONFIG_PM_ENABLE is off.
+
+    config AUTODOOR_PM_MIN_FREQ_MHZ
+        int "Min CPU frequency (MHz)"
+        range 10 80
+        default 10
+        help
+            Valid ESP32-C3 values: 10, 20, 40, 80.
+
+endmenu

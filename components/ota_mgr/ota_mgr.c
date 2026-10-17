@@ -15,7 +15,7 @@
 
 #define OTA_TASK_STACK   8192 /* TLS needs far more than the httpd handler stack */
 #define OTA_TASK_PRIO    5
-#define OTA_REBOOT_DELAY pdMS_TO_TICKS(1000)
+#define OTA_REBOOT_DELAY pdMS_TO_TICKS(5000)
 #define OTA_URI_SCHEME   "https://"
 
 extern const char ca_crt_start[] asm("_binary_ca_crt_start");

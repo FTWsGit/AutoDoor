@@ -6,6 +6,10 @@
 #include "esp_netif.h"
 #include "nvs_flash.h"
 
+#if CONFIG_PM_ENABLE
+#include "esp_pm.h"
+#endif
+
 #include "door.h"
 #include "health.h"
 #include "mqtt_mgr.h"
@@ -45,12 +49,32 @@ static void init_nvs(void)
     ESP_ERROR_CHECK(err);
 }
 
+/* Automatic light sleep: the CPU clocks down and sleeps whenever nothing needs it, and Wi-Fi
+ * modem sleep (see wifi_mgr) keeps the radio off between beacons. */
+static void power_init(void)
+{
+#if CONFIG_PM_ENABLE
+    const esp_pm_config_t pm_config = {
+        .max_freq_mhz = CONFIG_AUTODOOR_PM_MAX_FREQ_MHZ,
+        .min_freq_mhz = CONFIG_AUTODOOR_PM_MIN_FREQ_MHZ,
+#if CONFIG_FREERTOS_USE_TICKLESS_IDLE
+        .light_sleep_enable = true,
+#endif
+    };
+    log_if_failed("power management", esp_pm_configure(&pm_config));
+#else
+    ESP_LOGW(TAG, "CONFIG_PM_ENABLE is off: no power management");
+#endif
+}
+
 void app_main(void)
 {
     /* Boot-critical: nothing works without these. */
     init_nvs();
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
+
+    power_init();
 
     /* Everything below degrades instead of aborting. */
     log_if_failed("door init", door_init());

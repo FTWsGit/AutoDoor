@@ -129,7 +129,10 @@ esp_err_t mqtt_mgr_start(const mqtt_mgr_config_t *config)
     const esp_mqtt_client_config_t mqtt_config = {
         .broker.address.uri = CONFIG_AUTODOOR_MQTT_BROKER,
         .credentials.client_id = CONFIG_AUTODOOR_MQTT_CLIENT_ID,
-        .session.keepalive = 30, /* default 120 s is too slow to notice a half-open TCP link */
+        /* esp-mqtt pings every keepalive/2 and gives up if no PINGRESP arrives within keepalive.
+         * The default (120 s) is too slow to notice a half-open link; 30 s wakes the radio every
+         * 15 s. See AUTODOOR_MQTT_KEEPALIVE_S. */
+        .session.keepalive = CONFIG_AUTODOOR_MQTT_KEEPALIVE_S,
         .broker.verification.crt_bundle_attach = esp_crt_bundle_attach,
     };
     esp_mqtt_client_handle_t client = esp_mqtt_client_init(&mqtt_config);

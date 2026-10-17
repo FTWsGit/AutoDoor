@@ -84,9 +84,10 @@ esp_err_t servo_init(const servo_config_t *config)
     ESP_RETURN_ON_FALSE(config->initial_angle <= SERVO_MAX_ANGLE, ESP_ERR_INVALID_ARG, TAG,
                         "initial angle %u deg out of range", (unsigned)config->initial_angle);
 
+    esp_err_t ret = ESP_OK;
 #if CONFIG_PM_ENABLE
-    ESP_RETURN_ON_ERROR(esp_pm_lock_create(ESP_PM_APB_FREQ_MAX, 0, "servo", &s_pm_lock), TAG,
-                        "PM lock create failed");
+    ESP_GOTO_ON_ERROR(esp_pm_lock_create(ESP_PM_APB_FREQ_MAX, 0, "servo", &s_pm_lock), err, TAG,
+                      "PM lock create failed");
     pm_hold();
 #endif
 
@@ -97,7 +98,7 @@ esp_err_t servo_init(const servo_config_t *config)
         .freq_hz = SERVO_FREQ_HZ,
         .clk_cfg = LEDC_AUTO_CLK,
     };
-    ESP_RETURN_ON_ERROR(ledc_timer_config(&timer_config), TAG, "LEDC timer config failed");
+    ESP_GOTO_ON_ERROR(ledc_timer_config(&timer_config), err, TAG, "LEDC timer config failed");
 
     /* The initial duty is applied right here in the channel config, so the pin
      * emits a valid frame from the moment it is enabled — never an undefined level. */
@@ -108,10 +109,22 @@ esp_err_t servo_init(const servo_config_t *config)
         .timer_sel = SERVO_LEDC_TIMER,
         .duty = pulse_to_duty(angle_to_pulse_us(config->initial_angle)),
     };
-    ESP_RETURN_ON_ERROR(ledc_channel_config(&channel_config), TAG, "LEDC channel config failed");
+    ESP_GOTO_ON_ERROR(ledc_channel_config(&channel_config), err, TAG, "LEDC channel config failed");
 
     s_ready = true;
     return ESP_OK;
+
+err:
+#if CONFIG_PM_ENABLE
+    /* Roll the PM lock back so a failed init can't leave APB_FREQ_MAX held forever
+     * (and a retry doesn't leak a second lock over s_pm_lock). */
+    pm_release();
+    if (s_pm_lock != NULL) {
+        esp_pm_lock_delete(s_pm_lock);
+        s_pm_lock = NULL;
+    }
+#endif
+    return ret;
 }
 
 esp_err_t servo_set_angle(uint8_t angle_deg)

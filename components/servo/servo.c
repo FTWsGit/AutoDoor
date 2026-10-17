@@ -4,6 +4,11 @@
 
 #include "driver/ledc.h"
 #include "esp_check.h"
+#include "sdkconfig.h"
+
+#if CONFIG_PM_ENABLE
+#include "esp_pm.h"
+#endif
 
 /* 0..SERVO_MAX_ANGLE is mapped linearly onto this pulse range; the output never leaves it. */
 #define SERVO_MIN_PULSE_US 500
@@ -18,6 +23,35 @@
 
 static const char *TAG = "servo";
 static bool s_ready;
+
+/* The LEDC timer runs from APB_CLK (LEDC_AUTO_CLK picks it first on the C3), and APB_CLK is
+ * neither DFS- nor light-sleep-compatible: DFS can drop it from 80 MHz and light sleep gates it,
+ * which stretches/truncates the 50 Hz frames. So while the servo is being driven we hold an
+ * APB_FREQ_MAX lock (this also keeps the chip out of light sleep). servo_rest() releases it. */
+#if CONFIG_PM_ENABLE
+static esp_pm_lock_handle_t s_pm_lock;
+static bool s_pm_held;
+
+static void pm_hold(void)
+{
+    if (s_pm_lock != NULL && !s_pm_held) {
+        if (esp_pm_lock_acquire(s_pm_lock) == ESP_OK) {
+            s_pm_held = true;
+        }
+    }
+}
+
+static void pm_release(void)
+{
+    if (s_pm_lock != NULL && s_pm_held) {
+        esp_pm_lock_release(s_pm_lock);
+        s_pm_held = false;
+    }
+}
+#else
+static inline void pm_hold(void) {}
+static inline void pm_release(void) {}
+#endif
 
 static uint32_t pulse_to_duty(uint32_t pulse_us)
 {
@@ -50,6 +84,12 @@ esp_err_t servo_init(const servo_config_t *config)
     ESP_RETURN_ON_FALSE(config->initial_angle <= SERVO_MAX_ANGLE, ESP_ERR_INVALID_ARG, TAG,
                         "initial angle %u deg out of range", (unsigned)config->initial_angle);
 
+#if CONFIG_PM_ENABLE
+    ESP_RETURN_ON_ERROR(esp_pm_lock_create(ESP_PM_APB_FREQ_MAX, 0, "servo", &s_pm_lock), TAG,
+                        "PM lock create failed");
+    pm_hold();
+#endif
+
     const ledc_timer_config_t timer_config = {
         .speed_mode = SERVO_LEDC_MODE,
         .duty_resolution = SERVO_LEDC_RES,
@@ -80,6 +120,7 @@ esp_err_t servo_set_angle(uint8_t angle_deg)
     ESP_RETURN_ON_FALSE(angle_deg <= SERVO_MAX_ANGLE, ESP_ERR_INVALID_ARG, TAG,
                         "angle %u deg out of range", (unsigned)angle_deg);
 
+    pm_hold(); /* must be held before the PWM output is (re)enabled */
     ESP_RETURN_ON_ERROR(drive_duty(pulse_to_duty(angle_to_pulse_us(angle_deg))), TAG,
                         "cannot drive servo");
 
@@ -90,5 +131,6 @@ esp_err_t servo_rest(void)
 {
     ESP_RETURN_ON_FALSE(s_ready, ESP_ERR_INVALID_STATE, TAG, "not initialised");
     ESP_RETURN_ON_ERROR(ledc_stop(SERVO_LEDC_MODE, SERVO_LEDC_CHANNEL, 0), TAG, "stop failed");
+    pm_release(); /* output is off, DFS / light sleep may resume */
     return ESP_OK;
 }
